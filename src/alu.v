@@ -6,8 +6,8 @@ module alu #(
     parameter WIDTH     = 32,
     parameter ALU_WIDTH = 4
 )(
-    input  [WIDTH-1:0]     A,
-    input  [WIDTH-1:0]     B,
+    input  [WIDTH-1:0]   A,
+    input [WIDTH-1:0]  B,
     input  [ALU_WIDTH-1:0] ALUControl,
 
     output [WIDTH-1:0]     result,
