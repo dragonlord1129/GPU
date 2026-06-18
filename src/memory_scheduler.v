@@ -1,11 +1,10 @@
 // ============================================================================
-//  memory_scheduler  (with memory coalescing) -- as supplied by the user.
+//  memory_scheduler  (with memory coalescing) -- BUGFIX VERSION
 // ============================================================================
 module memory_scheduler #(
-    parameter LINE_WORDS  = 16,   // words per coalesced block / cache line
-    parameter OFFSET_BITS = 4     // = log2(LINE_WORDS)
+    parameter LINE_WORDS  = 16,
+    parameter OFFSET_BITS = 4
 ) (
-    // data memory and pc interface
     input             clk,
     input             reset,
     input  [3:0]      request,
@@ -16,7 +15,6 @@ module memory_scheduler #(
     output            stall,
     output reg        mem_write,
 
-    // warp scheduler interface
     input             mem_req,
     input  [1:0]      warp_id_from_ws,
     output reg        mem_done,
@@ -24,13 +22,11 @@ module memory_scheduler #(
     input  [3:0]      lw_destination,
     output reg [3:0]  lw_destination_out,
 
-    // data memory interface  (WIDENED: a transaction moves a whole block)
-    input  [15:0]     lw_line_in  [0:LINE_WORDS-1], // block read back from memory
-    output reg [15:0] addr_out,                      // block BASE address
-    output reg [15:0] sw_line_out [0:LINE_WORDS-1], // block to write
-    output reg [LINE_WORDS-1:0] sw_word_mask,        // 1 bit/word: which to write
+    input  [15:0]     lw_line_in  [0:LINE_WORDS-1],
+    output reg [15:0] addr_out,
+    output reg [15:0] sw_line_out [0:LINE_WORDS-1],
+    output reg [LINE_WORDS-1:0] sw_word_mask,
 
-    // top interface
     output reg [1:0]  lw_warp_id,
     output reg        lw_ready
 );
@@ -59,15 +55,13 @@ reg request_reg;
 reg [1:0] current_warp_in_ms;
 reg [1:0] queue_pointer;
 
-// ---- coalescing bookkeeping ----
-reg [15:0] lane_serviced;   // lanes already covered by a transaction this pass
-reg [15:0] block_members;   // lanes served by the CURRENT in-flight transaction
+reg [15:0] lane_serviced;
+reg [15:0] block_members;
 
 assign stall =
     (state_curr == REQ)     ||
     (state_curr == WAIT)    ||
-    (state_curr == CAPTURE) ||
-    ((state_curr == IDLE) && mem_req);
+    (state_curr == CAPTURE) ;
 
 always @(posedge clk) begin
     if (reset) begin
@@ -124,9 +118,10 @@ always @(posedge clk) begin
                             if (request == 4'b0110)
                                 DESTINATION[i] <= lw_destination;
                             found = 1;
+                            // FIX #1: store payload by queue slot i, not by warp ID
                             for (j = 0; j < 16; j = j + 1) begin
-                                ADDR[warp_id_from_ws][j]    <= addr_in[j];
-                                SW_DATA[warp_id_from_ws][j] <= sw_out[j];
+                                ADDR[i][j]    <= addr_in[j];
+                                SW_DATA[i][j] <= sw_out[j];
                             end
                         end
                     end
@@ -163,9 +158,10 @@ always @(posedge clk) begin
                             if (request == 4'b0110)
                                 DESTINATION[i] <= lw_destination;
                             found = 1;
+                            // FIX #1: store payload by queue slot i
                             for (j = 0; j < 16; j = j + 1) begin
-                                ADDR[warp_id_from_ws][j]    <= addr_in[j];
-                                SW_DATA[warp_id_from_ws][j] <= sw_out[j];
+                                ADDR[i][j]    <= addr_in[j];
+                                SW_DATA[i][j] <= sw_out[j];
                             end
                         end
                     end
@@ -185,7 +181,7 @@ always @(posedge clk) begin
                     end
 
                     state_curr  <= REQ_CHECK;
-                    request_reg <= REQ_TYPE[queue_pointer];
+                    // FIX #2: removed stale 'request_reg <= REQ_TYPE[queue_pointer];'
                 end
             end
 
@@ -204,16 +200,17 @@ always @(posedge clk) begin
                             if (request == 4'b0110)
                                 DESTINATION[i] <= lw_destination;
                             found = 1;
+                            // FIX #1: store payload by queue slot i
                             for (j = 0; j < 16; j = j + 1) begin
-                                ADDR[warp_id_from_ws][j]    <= addr_in[j];
-                                SW_DATA[warp_id_from_ws][j] <= sw_out[j];
+                                ADDR[i][j]    <= addr_in[j];
+                                SW_DATA[i][j] <= sw_out[j];
                             end
                         end
                     end
                 end
 
-                request_reg   <= REQ_TYPE[queue_pointer];
-                lane_serviced <= 16'h0000;   // fresh coalescing pass for this warp
+                // FIX #2: removed duplicate assignment, kept only the one using i
+                lane_serviced <= 16'h0000;
                 state_curr    <= REQ;
             end
 
@@ -233,9 +230,10 @@ always @(posedge clk) begin
                             if (request == 4'b0110)
                                 DESTINATION[i] <= lw_destination;
                             found = 1;
+                            // FIX #1: store payload by queue slot i
                             for (j = 0; j < 16; j = j + 1) begin
-                                ADDR[warp_id_from_ws][j]    <= addr_in[j];
-                                SW_DATA[warp_id_from_ws][j] <= sw_out[j];
+                                ADDR[i][j]    <= addr_in[j];
+                                SW_DATA[i][j] <= sw_out[j];
                             end
                         end
                     end
@@ -274,18 +272,19 @@ always @(posedge clk) begin
                     end
                     else begin
                         // 2) gather every active lane sharing the leader's block
-                        target_seg = ADDR[current_warp_in_ms][leader][15:OFFSET_BITS];
+                        // FIX #1: access payload by queue_pointer, not current_warp_in_ms
+                        target_seg = ADDR[queue_pointer][leader][15:OFFSET_BITS];
                         members    = 16'h0000;
                         wmask      = {LINE_WORDS{1'b0}};
 
                         for (l = 0; l < 16; l = l + 1) begin
                             if (active_mask[l] && !lane_serviced[l] &&
-                                (ADDR[current_warp_in_ms][l][15:OFFSET_BITS] == target_seg))
+                                (ADDR[queue_pointer][l][15:OFFSET_BITS] == target_seg))
                                 members[l] = 1'b1;
                         end
 
                         // 3) issue ONE transaction for the whole block
-                        addr_out      <= {target_seg, {OFFSET_BITS{1'b0}}}; // base
+                        addr_out      <= {target_seg, {OFFSET_BITS{1'b0}}};
                         block_members <= members;
                         lane_serviced <= lane_serviced | members;
 
@@ -294,9 +293,10 @@ always @(posedge clk) begin
                             mem_write <= 1'b1;
                             for (l = 0; l < 16; l = l + 1) begin
                                 if (members[l]) begin
-                                    sw_line_out[ ADDR[current_warp_in_ms][l][OFFSET_BITS-1:0] ]
-                                        <= SW_DATA[current_warp_in_ms][l];
-                                    wmask[ ADDR[current_warp_in_ms][l][OFFSET_BITS-1:0] ] = 1'b1;
+                                    // FIX #1: use queue_pointer for data
+                                    sw_line_out[ ADDR[queue_pointer][l][OFFSET_BITS-1:0] ]
+                                        <= SW_DATA[queue_pointer][l];
+                                    wmask[ ADDR[queue_pointer][l][OFFSET_BITS-1:0] ] = 1'b1;
                                 end
                             end
                             sw_word_mask <= wmask;
@@ -317,12 +317,13 @@ always @(posedge clk) begin
                     integer l;
                     for (l = 0; l < 16; l = l + 1) begin
                         if (block_members[l])
-                            lw_out[l] <= lw_line_in[ ADDR[current_warp_in_ms][l][OFFSET_BITS-1:0] ];
+                            // FIX #1: use queue_pointer for address look-up
+                            lw_out[l] <= lw_line_in[ ADDR[queue_pointer][l][OFFSET_BITS-1:0] ];
                     end
                 end
 
                 mem_write  <= 1'b0;
-                state_curr <= REQ;   // process the next block (if any)
+                state_curr <= REQ;
             end
 
             DONE: begin

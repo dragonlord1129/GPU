@@ -1,0 +1,1978 @@
+    // ============================================================
+    // ALU MODULE
+    // ============================================================
+
+    module alu #(
+        parameter WIDTH     = 32,
+        parameter ALU_WIDTH = 4
+    )(
+        input  [WIDTH-1:0]   A,
+        input [WIDTH-1:0]  B,
+        input  [ALU_WIDTH-1:0] ALUControl,
+
+        output [WIDTH-1:0]     result,
+        output                 carry,
+        output                 zero,
+        output                 overflow,
+        output                 negative,
+        output                 divide_by_zero
+    );
+
+        // ========================================================
+        // ADD / SUB
+        // ========================================================
+
+        wire [WIDTH-1:0] B_mux;
+        wire [WIDTH-1:0] sum;
+        wire             cout;
+
+        assign B_mux       = ALUControl[0] ? ~B : B;
+        assign {cout, sum} = A + B_mux + ALUControl[0];
+
+        // ========================================================
+        // SLT
+        // ========================================================
+
+        wire slt_bit;
+
+        assign slt_bit = sum[WIDTH-1] ^ overflow;
+
+        wire [WIDTH-1:0] slt_result;
+
+        assign slt_result = {{WIDTH-1{1'b0}}, slt_bit};
+
+        // ========================================================
+        // MULTIPLIER
+        // ========================================================
+
+        wire [2*WIDTH-1:0] mul_full;
+
+        booth_multiplier #(
+            .N(WIDTH)
+        ) u_mul (
+            .multiplicand(A),
+            .multiplier(B),
+            .product(mul_full)
+        );
+
+        wire [WIDTH-1:0] mul_result_low;
+        wire [WIDTH-1:0] mul_result_high;
+
+        assign mul_result_low  = mul_full[WIDTH-1:0];
+        assign mul_result_high = mul_full[2*WIDTH-1:WIDTH];
+
+        // ========================================================
+        // DIVIDER
+        // ========================================================
+
+        wire [WIDTH-1:0] div_quotient;
+        wire [WIDTH-1:0] div_remainder;
+
+        non_restoring_divider_comb #(
+            .WIDTH(WIDTH)
+        ) u_div (
+            .dividend(A),
+            .divisor(B),
+            .signed_mode(1'b1),
+            .quotient(div_quotient),
+            .remainder(div_remainder),
+            .divide_by_zero(divide_by_zero)
+        );
+
+        // ========================================================
+        // RESULT MUX
+        // ========================================================
+
+        reg [WIDTH-1:0] mux_out;
+
+        always @(*) begin
+            case (ALUControl)
+
+                4'b0000: mux_out = sum;              // ADD
+                4'b0001: mux_out = sum;              // SUB
+
+                4'b0010: mux_out = A & B;            // AND
+                4'b0011: mux_out = A | B;            // OR
+                4'b0100: mux_out = A ^ B;            // XOR
+
+                4'b0101: mux_out = mul_result_low;   // MUL LOW
+                4'b0110: mux_out = mul_result_high;  // MUL HIGH
+
+                4'b0111: mux_out = div_quotient;     // DIV
+                4'b1000: mux_out = div_remainder;    // REM
+
+                4'b1001: mux_out = slt_result;       // SLT
+
+                default: mux_out = {WIDTH{1'b0}};
+
+            endcase
+        end
+
+        assign result = mux_out;
+
+        // ========================================================
+        // FLAGS
+        // ========================================================
+
+        assign zero     = ~|result;
+        assign carry    = cout & ~ALUControl[1];
+        assign negative = result[WIDTH-1];
+
+        assign overflow =
+            ~ALUControl[2] &
+            ~ALUControl[1] &
+            (sum[WIDTH-1] ^ A[WIDTH-1]) &
+            ~(ALUControl[0] ^ A[WIDTH-1] ^ B[WIDTH-1]);
+
+    endmodule
+
+
+    // ============================================================
+    // BOOTH MULTIPLIER (CORRECTED)
+    // ============================================================
+
+    module booth_multiplier #(
+        parameter N = 32
+    )(
+        input  signed [N-1:0]       multiplicand,
+        input  signed [N-1:0]       multiplier,
+        output reg signed [2*N-1:0] product
+    );
+
+        integer i;
+
+        reg signed [N:0]   A;      // N+1 bits (sign-extended accumulator)
+        reg        [N-1:0] Q;      // N bits   (running multiplier)
+        reg signed [N-1:0] M;      // N bits   (multiplicand)
+        reg                Q_1;    // 1 bit    (previous LSB of Q)
+
+        reg signed [2*N+1:0] temp; // 2N+2 bits for {A(N+1), Q(N), Q_1(1)}
+
+        always @(*) begin
+            A   = {{1{multiplicand[N-1]}}, {N{1'b0}}};  // sign-extended zero
+            Q   = multiplier;
+            M   = multiplicand;
+            Q_1 = 1'b0;
+
+            for (i = 0; i < N; i = i + 1) begin
+
+                // Step 1: add/subtract based on {Q[0], Q_1}
+                case ({Q[0], Q_1})
+                    2'b01: A = A + {{1{M[N-1]}}, M};   // sign-extend M to N+1 bits
+                    2'b10: A = A - {{1{M[N-1]}}, M};
+                    default: ;
+                endcase
+
+                // Step 2: arithmetic right shift of {A, Q, Q_1} as one unit
+                // Total width = (N+1) + N + 1 = 2N+2
+                temp = $signed({A, Q, Q_1}) >>> 1;
+
+                //  temp[2N+1:N+1] = new A  (N+1 bits)
+                //  temp[N:1]      = new Q  (N bits)
+                //  temp[0]        = new Q_1 (1 bit)
+                A   = temp[2*N+1 : N+1];
+                Q   = temp[N     : 1  ];
+                Q_1 = temp[0];
+
+            end
+
+            product = {A[N-1:0], Q};  // drop the extra sign bit of A
+        end
+
+    endmodule
+
+
+    // ============================================================
+    // NON-RESTORING DIVIDER
+    // ============================================================
+
+    module non_restoring_divider_comb #(
+        parameter WIDTH = 32
+    )(
+        input  wire [WIDTH-1:0] dividend,
+        input  wire [WIDTH-1:0] divisor,
+        input  wire             signed_mode,
+
+        output reg  [WIDTH-1:0] quotient,
+        output reg  [WIDTH-1:0] remainder,
+        output reg              divide_by_zero
+    );
+
+        integer i;
+
+        reg [WIDTH:0]   A;
+        reg [WIDTH-1:0] Q;
+        reg [WIDTH-1:0] M;
+
+        reg [WIDTH-1:0] dividend_abs;
+        reg [WIDTH-1:0] divisor_abs;
+
+        reg dividend_sign;
+        reg divisor_sign;
+
+        reg quotient_sign;
+        reg remainder_sign;
+
+        reg [WIDTH:0] tempA;
+
+        always @(*) begin
+
+            quotient       = 0;
+            remainder      = 0;
+            divide_by_zero = 0;
+
+            if (divisor == 0) begin
+
+                divide_by_zero = 1'b1;
+
+            end
+            else begin
+
+                dividend_sign = signed_mode & dividend[WIDTH-1];
+                divisor_sign  = signed_mode & divisor[WIDTH-1];
+
+                dividend_abs =
+                    dividend_sign ? (~dividend + 1'b1) : dividend;
+
+                divisor_abs =
+                    divisor_sign ? (~divisor + 1'b1) : divisor;
+
+                quotient_sign  = dividend_sign ^ divisor_sign;
+                remainder_sign = dividend_sign;
+
+                A = 0;
+                Q = dividend_abs;
+                M = divisor_abs;
+
+                for (i = 0; i < WIDTH; i = i + 1) begin
+
+                    A = {A[WIDTH-1:0], Q[WIDTH-1]};
+                    Q = {Q[WIDTH-2:0], 1'b0};
+
+                    if (A[WIDTH] == 0)
+                        tempA = A - {1'b0, M};
+                    else
+                        tempA = A + {1'b0, M};
+
+                    Q[0] = (tempA[WIDTH] == 0);
+
+                    A = tempA;
+
+                end
+
+                // Final correction
+                if (A[WIDTH] == 1)
+                    A = A + {1'b0, M};
+
+                quotient =
+                    quotient_sign ? (~Q + 1'b1) : Q;
+
+                remainder =
+                    remainder_sign ? (~A[WIDTH-1:0] + 1'b1)
+                                : A[WIDTH-1:0];
+
+            end
+        end
+
+    endmodule#!/usr/bin/env python3
+    OP = dict(ADD=0,SUB=1,AND=2,OR=3,XOR=4,MUL=5,LW=6,SW=7,ADDI=8,SUBI=9,
+            SLT=0xA,BEQ=0xB,BLT=0xC,JMP=0xD,DIV=0xE,HALT=0xF)
+
+    def enc_rrr(op, rd, rs1, rs2):
+        return (OP[op]<<12) | (rd<<8) | (rs2<<4) | rs1
+
+    def enc_rri(op, rd, rs1, imm):
+        return ((imm & 0xFFFF) << 16) | (OP[op]<<12) | (rd<<8) | rs1
+
+    def enc_lw(rd, rs1, imm):
+        return enc_rri('LW', rd, rs1, imm)
+
+    def enc_sw(data, base, imm):
+        return ((imm & 0xFFFF) << 16) | (OP['SW']<<12) | (data<<4) | base
+
+    def halt():
+        return (OP['HALT']<<12)
+
+    prog = []
+
+    # ---- Write A matrix (16 words) ----
+    prog.append( enc_rri('ADDI',1,0,0) )
+    for i in range(16):
+        prog.append( enc_rri('ADDI',2,0,i+1) )
+        prog.append( enc_sw(2,1,i) )
+
+    # ---- Write B matrix (64 words) ----
+    prog.append( enc_rri('ADDI',3,0,64) )
+    for i in range(64):
+        prog.append( enc_rri('ADDI',4,0,i+1) )
+        prog.append( enc_sw(4,3,i) )
+
+    # ---- Clear C (64 words) ----
+    prog.append( enc_rri('ADDI',5,0,128) )
+    prog.append( enc_rri('ADDI',6,0,0) )
+    for i in range(64):
+        prog.append( enc_sw(6,5,i) )
+
+    # ---- Matrix multiply ----
+    mm_start = len(prog)
+    prog.append( enc_rri('ADDI',2,0,4) )         # r2 = K = 4
+    prog.append( enc_rrr('MUL',3,13,2) )         # r3 = i*4
+    prog.append( enc_rrr('MUL',4,13,14) )        # r4 = i*16
+    prog.append( enc_rri('ADDI',8,0,128) )       # r8 = 128
+    prog.append( enc_rrr('ADD',4,4,8) )          # r4 = 128 + i*16
+    prog.append( enc_rrr('ADD',4,4,15) )         # r4 = &C[i][j]
+    prog.append( enc_rri('ADDI',7,0,64) )        # r7 = 64
+    prog.append( enc_rri('ADDI',5,0,0) )         # acc = 0
+    prog.append( enc_rri('ADDI',6,0,0) )         # k = 0
+    # LOOP START
+    loop_pc = len(prog)
+    prog.append( enc_rrr('ADD',10,3,6) )         # r10 = &A[i][k]
+    prog.append( enc_lw(11,10,0) )               # r11 = A[i][k]
+    prog.append( enc_rrr('MUL',12,6,14) )        # r12 = k*16
+    prog.append( enc_rrr('ADD',12,12,7) )        # r12 = 64 + k*16
+    prog.append( enc_rrr('ADD',12,12,15) )       # r12 = &B[k][j]
+    prog.append( enc_lw(1,12,0) )                # r1  = B[k][j]
+    prog.append( enc_rrr('MUL',11,11,1) )        # r11 = A*B
+    prog.append( enc_rrr('ADD',5,5,11) )         # acc += product
+    prog.append( enc_rri('ADDI',6,6,1) )         # k++
+    blt_pc = len(prog)
+    offset = (loop_pc - blt_pc) & 0xFFFF
+    prog.append( ((offset << 16) | (OP['BLT'] << 12) | (2 << 4) | 6) )
+    prog.append( enc_sw(5,4,0) )                 # C[i][j] = acc
+    prog.append( halt() )
+
+    with open('memfile.hex','w') as f:
+        f.write("// self-initialising matmul kernel\n@00\n")
+        for w in prog:
+            f.write(f"{w:08X}\n")// ============================================================================
+    //  data_memory  -- exactly the module supplied by the user (word-wide, 1 port,
+    //                   async read, sync write).
+    // ============================================================================
+    module data_memory #(
+        parameter ADDR_WIDTH = 8,
+        parameter DEPTH = 256
+    )(
+        input [ADDR_WIDTH-1:0] A,
+        input [31:0] writeData,
+        input clk,
+        input writeEnable,
+        output [31:0] RD
+    );
+
+    reg [31:0] data_memory [0:DEPTH-1];
+
+    // asynchronous read
+    assign RD = data_memory[A];
+
+    integer i;
+
+    always @(posedge clk) begin
+        if (writeEnable)
+            data_memory[A] <= writeData;
+    end
+
+    initial begin
+        for (i = 0; i < DEPTH; i = i + 1)
+            data_memory[i] = 32'b0;
+    end
+
+    endmodule
+
+
+    // ============================================================================
+    //  data_memory_line
+    // ----------------------------------------------------------------------------
+    //  A block / cache-line view built ON TOP of the user's word-wide data_memory,
+    //  honouring the WIDENED contract the coalescing memory_scheduler expects:
+    //
+    //      * a line = LINE_WORDS consecutive words, aligned on LINE_WORDS
+    //      * one transaction moves the WHOLE line in a single cycle
+    //      * line base address has its low OFFSET_BITS cleared; word k = base + k
+    //
+    //  Implementation: LINE_WORDS independent banks of the ORIGINAL data_memory.
+    //  Bank k stores word k of every line, addressed by the line index
+    //  ( = addr_base >> OFFSET_BITS ). Because data_memory reads asynchronously,
+    //  all LINE_WORDS words appear combinationally -> the scheduler's 1-cycle
+    //  latency contract holds. A per-word store mask drives a per-bank
+    //  writeEnable, so only masked words are written and the rest are untouched
+    //  (no read-modify-write needed -- words live in separate banks).
+    //
+    //  The schedulers use 16-bit words; the user's memory is 32 bits wide, so the
+    //  low 16 bits of each bank are used.
+    // ============================================================================
+    module data_memory_line #(
+        parameter LINE_WORDS  = 16,
+        parameter OFFSET_BITS = 4,
+        parameter INDEX_BITS  = 8           // number of lines = 2**INDEX_BITS
+    ) (
+        input                    clk,
+        input                    mem_write,
+        input  [15:0]            addr_base,                  // block BASE address
+        input  [LINE_WORDS-1:0]  sw_word_mask,
+        input  [15:0]            sw_line_out [0:LINE_WORDS-1],
+        output [15:0]            lw_line_in  [0:LINE_WORDS-1]
+    );
+
+        wire [INDEX_BITS-1:0] line_index = addr_base[OFFSET_BITS +: INDEX_BITS];
+
+        genvar k;
+        generate
+            for (k = 0; k < LINE_WORDS; k = k + 1) begin : bank
+                wire [31:0] rd_word;
+                data_memory #(
+                    .ADDR_WIDTH (INDEX_BITS),
+                    .DEPTH      (1 << INDEX_BITS)
+                ) u_bank (
+                    .A          (line_index),
+                    .writeData  ({16'b0, sw_line_out[k]}),
+                    .clk        (clk),
+                    .writeEnable(mem_write & sw_word_mask[k]),
+                    .RD         (rd_word)
+                );
+                assign lw_line_in[k] = rd_word[15:0];
+            end
+        endgenerate
+
+    endmodule// ============================================================================
+    // gpu_top – pipelined memory request (fixes combinational race)
+    // ============================================================================
+    module gpu_top #(
+        parameter NUMBER_OF_WARPS   = 4,
+        parameter NUMBER_OF_THREADS = 16,
+        parameter DATA_WIDTH        = 16
+    )(
+        input             clk,
+        input             reset,
+        input      [3:0]  lane_select,
+        output     [15:0] debug_pc,
+        output     [15:0] debug_regs [0:3][0:15][0:15],
+        output     [15:0] debug_lw_out,
+        output     [15:0] debug_alu_result,
+        output            done
+    );
+
+        // ---------------- warp scheduler <-> top ----------------
+        wire        mem_done;
+        wire [1:0]  warp_id_from_ms;
+        wire [1:0]  warp_id_to_ms;
+        wire [1:0]  current_warp_id;
+        wire [15:0] warp_ready;
+        wire [15:0] warp_ready_mask;
+        wire        running;
+
+        // ---------------- decode ----------------
+        wire [31:0] instr;
+        wire [3:0]  opcode = instr[15:12];
+        wire [3:0]  A1 = instr[3:0];
+        wire [3:0]  A2 = instr[7:4];
+        wire [3:0]  A3 = instr[11:8];
+        wire [15:0] imm = instr[31:16];
+        wire [15:0] imm_out;
+
+        // ---------------- control unit ----------------
+        reg  [3:0] alu_control;
+        reg        alu_source;
+        reg        reg_we_ctrl;
+        reg        is_lw, is_sw, is_branch_beq, is_branch_blt, is_jump, is_halt;
+
+        always @(*) begin
+            alu_control   = 4'b0000;
+            alu_source    = 1'b0;
+            reg_we_ctrl   = 1'b0;
+            is_lw         = 1'b0;
+            is_sw         = 1'b0;
+            is_branch_beq = 1'b0;
+            is_branch_blt = 1'b0;
+            is_jump       = 1'b0;
+            is_halt       = 1'b0;
+            case (opcode)
+                4'b0000: begin alu_control=4'b0000; reg_we_ctrl=1; end
+                4'b0001: begin alu_control=4'b0001; reg_we_ctrl=1; end
+                4'b0010: begin alu_control=4'b0010; reg_we_ctrl=1; end
+                4'b0011: begin alu_control=4'b0011; reg_we_ctrl=1; end
+                4'b0100: begin alu_control=4'b0100; reg_we_ctrl=1; end
+                4'b0101: begin alu_control=4'b0101; reg_we_ctrl=1; end
+                4'b0110: begin alu_control=4'b0000; alu_source=1; is_lw=1; end
+                4'b0111: begin alu_control=4'b0000; alu_source=1; is_sw=1; end
+                4'b1000: begin alu_control=4'b0000; alu_source=1; reg_we_ctrl=1; end
+                4'b1001: begin alu_control=4'b0001; alu_source=1; reg_we_ctrl=1; end
+                4'b1010: begin alu_control=4'b1001; reg_we_ctrl=1; end
+                4'b1011: begin alu_control=4'b0001; is_branch_beq=1; end
+                4'b1100: begin alu_control=4'b1001; is_branch_blt=1; end
+                4'b1101: begin alu_source=1;        is_jump=1; end
+                4'b1110: begin alu_control=4'b0111; reg_we_ctrl=1; end
+                4'b1111: begin is_halt=1; end
+                default: ;
+            endcase
+        end
+
+        wire is_mem = is_lw | is_sw;
+        wire ms_stall;
+        wire mem_req_delayed;
+        wire warp_mem_req;
+
+        // ----- Pipelining registers for memory requests -----
+        reg         mem_pending;
+        reg [1:0]   mem_pending_warp;
+        reg [15:0]  mem_pending_addr  [0:NUMBER_OF_THREADS-1];
+        reg [15:0]  mem_pending_sw    [0:NUMBER_OF_THREADS-1];
+        reg [3:0]   mem_pending_lwdst;
+        reg         mem_pending_is_load;
+
+        assign mem_req_delayed = mem_pending && !ms_stall;
+        assign warp_mem_req = running && is_mem && !mem_pending && !ms_stall;
+
+        wire hold = running && is_mem && ms_stall;
+        wire halt = running && is_halt;
+
+        // ---------------- register files (forwarding version) ----------------
+        wire [DATA_WIDTH-1:0] RS1_warps [0:NUMBER_OF_WARPS-1][0:NUMBER_OF_THREADS-1];
+        wire [DATA_WIDTH-1:0] RS2_warps [0:NUMBER_OF_WARPS-1][0:NUMBER_OF_THREADS-1];
+
+        wire [DATA_WIDTH-1:0] RS1 [0:NUMBER_OF_THREADS-1];
+        wire [DATA_WIDTH-1:0] RS2 [0:NUMBER_OF_THREADS-1];
+
+        wire [DATA_WIDTH-1:0] alu_result [0:NUMBER_OF_THREADS-1];
+        wire                  alu_zero   [0:NUMBER_OF_THREADS-1];
+
+        wire [DATA_WIDTH-1:0] lw_out [0:NUMBER_OF_THREADS-1];
+        wire [3:0]            lw_destination_out;
+        wire                  lw_ready;
+        wire [1:0]            lw_warp_id;
+
+        genvar w, i, r;
+        generate
+            for (w = 0; w < NUMBER_OF_WARPS; w = w + 1) begin : warp_array
+                wire        lw_we_warp = lw_ready && (w == lw_warp_id);
+                wire [3:0]  A3_eff     = lw_we_warp ? lw_destination_out : A3;
+
+                for (i = 0; i < NUMBER_OF_THREADS; i = i + 1) begin : lane_array
+                    wire [DATA_WIDTH-1:0] WD = lw_we_warp ? lw_out[i] : alu_result[i];
+
+                    wire normal_we = running && reg_we_ctrl && warp_ready_mask[i]
+                                    && (w == current_warp_id) && !mem_pending;
+                    wire we = normal_we || lw_we_warp;
+
+                    reg_file #(.DATA_WIDTH(DATA_WIDTH)) reg_inst (
+                        .clk(clk), .reset(reset),
+                        .A1(A1), .A2(A2), .A3(A3_eff),
+                        .RS1(RS1_warps[w][i]), .RS2(RS2_warps[w][i]),
+                        .block_idx (w[DATA_WIDTH-1:0]),
+                        .block_dim (16'd16),
+                        .thread_idx(i[DATA_WIDTH-1:0]),
+                        .WD(WD), .we(we), .reg_en(1'b1)
+                    );
+
+                    for (r = 0; r < 16; r = r + 1) begin : debug_copy
+                        assign debug_regs[w][i][r] = reg_inst.REGISTER[r];
+                    end
+                end
+            end
+        endgenerate
+
+        generate
+            for (i = 0; i < NUMBER_OF_THREADS; i = i + 1) begin : sel
+                assign RS1[i] = RS1_warps[current_warp_id][i];
+                assign RS2[i] = RS2_warps[current_warp_id][i];
+            end
+        endgenerate
+
+        generate
+            for (i = 0; i < NUMBER_OF_THREADS; i = i + 1) begin : alu_lane
+                wire [DATA_WIDTH-1:0] B = alu_source ? imm_out : RS2[i];
+                alu #(.WIDTH(DATA_WIDTH), .ALU_WIDTH(4)) alu_inst (
+                    .A(RS1[i]), .B(B), .ALUControl(alu_control),
+                    .result(alu_result[i]),
+                    .carry(), .zero(alu_zero[i]),
+                    .overflow(), .negative(), .divide_by_zero()
+                );
+            end
+        endgenerate
+
+        wire branch_taken = (is_branch_beq && alu_zero[0]) ||
+                            (is_branch_blt && alu_result[0][0]);
+        wire redirect  = running && (branch_taken || is_jump);
+        wire [15:0] pc_target = warp_ready + imm_out;
+
+        // ---------------- Capture memory request ----------------
+        integer j;
+        always @(posedge clk) begin
+            if (reset) begin
+                mem_pending <= 1'b0;
+            end else begin
+                if (running && is_mem && !mem_pending && !ms_stall) begin
+                    mem_pending <= 1'b1;
+                    mem_pending_warp <= current_warp_id;
+                    for (j = 0; j < NUMBER_OF_THREADS; j = j + 1) begin
+                        mem_pending_addr[j] <= alu_result[j];
+                        mem_pending_sw[j]   <= RS2[j];
+                    end
+                    mem_pending_lwdst   <= A3;
+                    mem_pending_is_load <= is_lw;
+                end
+                if (mem_done && (warp_id_from_ms == mem_pending_warp))
+                    mem_pending <= 1'b0;
+            end
+        end
+
+        // ---------------- memory scheduler + line memory ----------------
+        wire        mem_write;
+        wire [15:0] addr_out;
+        wire [15:0] sw_line_out [0:15];
+        wire [15:0] sw_word_mask_w;
+        wire [15:0] lw_line_in  [0:15];
+
+        memory_scheduler #(.LINE_WORDS(16), .OFFSET_BITS(4)) scheduler_inst (
+            .clk(clk), .reset(reset),
+            .request(mem_pending_is_load ? 4'b0110 : 4'b0111),
+            .active_mask(warp_ready_mask),
+            .addr_in(mem_pending_addr),
+            .sw_out(mem_pending_sw),
+            .lw_out(lw_out),
+            .stall(ms_stall),
+            .mem_write(mem_write),
+            .mem_req(mem_req_delayed),
+            .warp_id_from_ws(mem_pending ? mem_pending_warp : current_warp_id),
+            .mem_done(mem_done),
+            .warp_id_to_ws(warp_id_from_ms),
+            .lw_destination(mem_pending_lwdst),
+            .lw_destination_out(lw_destination_out),
+            .lw_line_in(lw_line_in),
+            .addr_out(addr_out),
+            .sw_line_out(sw_line_out),
+            .sw_word_mask(sw_word_mask_w),
+            .lw_warp_id(lw_warp_id),
+            .lw_ready(lw_ready)
+        );
+
+        data_memory_line #(.LINE_WORDS(16), .OFFSET_BITS(4), .INDEX_BITS(8)) dmem (
+            .clk(clk), .mem_write(mem_write),
+            .addr_base(addr_out),
+            .sw_word_mask(sw_word_mask_w),
+            .sw_line_out(sw_line_out),
+            .lw_line_in(lw_line_in)
+        );
+
+        // ---------------- warp scheduler ----------------
+        warp_scheduler #(.NUMBER_OF_WARPS(NUMBER_OF_WARPS)) warp_inst (
+            .clk(clk), .rst(reset),
+            .mem_req(warp_mem_req),
+            .mem_done(mem_done),
+            .warp_id_from_ms(warp_id_from_ms),
+            .halt(halt),
+            .hold(hold),
+            .redirect(redirect), .pc_target(pc_target),
+            .warp_id_to_ms(warp_id_to_ms),
+            .warp_ready(warp_ready),
+            .warp_ready_mask(warp_ready_mask),
+            .current_warp_id(current_warp_id),
+            .running(running),
+            .done(done)
+        );
+
+        // ---------------- instruction memory ----------------
+        instruction_memory imem (
+            .A(warp_ready[7:0]), .RD(instr)
+        );
+
+        // ---------------- immediate ----------------
+        imm_gen #(.DATA_WIDTH(16)) imm_inst (.imm(imm), .imm_out(imm_out));
+
+        // ---------------- debug ----------------
+        assign debug_pc         = warp_ready;
+        assign debug_lw_out     = lw_out[lane_select];
+        assign debug_alu_result = alu_result[lane_select];
+    endmodulemodule imm_gen #(parameter DATA_WIDTH = 16)(
+        input  [15:0]            imm,
+        output [DATA_WIDTH-1:0]  imm_out
+    );
+        assign imm_out = imm[DATA_WIDTH-1:0];
+    endmodule// ============================
+    // Instruction Memory Module
+    // ============================
+    module instruction_memory (
+        input [7:0] A,              // Address to fetch instruction
+        output [31:0] RD             // Instruction read
+    );
+        reg [31:0] memory [0:255]; // Instruction memory array
+
+        assign RD = memory[A];
+
+        initial begin
+            $readmemh("memfile.hex", memory); // Load instructions from file
+        end
+    endmodule// self-initialising matmul kernel
+    @00
+    00008100
+    00018200
+    00007021
+    00028200
+    00017021
+    00038200
+    00027021
+    00048200
+    00037021
+    00058200
+    00047021
+    00068200
+    00057021
+    00078200
+    00067021
+    00088200
+    00077021
+    00098200
+    00087021
+    000A8200
+    00097021
+    000B8200
+    000A7021
+    000C8200
+    000B7021
+    000D8200
+    000C7021
+    000E8200
+    000D7021
+    000F8200
+    000E7021
+    00108200
+    000F7021
+    00408300
+    00018400
+    00007043
+    00028400
+    00017043
+    00038400
+    00027043
+    00048400
+    00037043
+    00058400
+    00047043
+    00068400
+    00057043
+    00078400
+    00067043
+    00088400
+    00077043
+    00098400
+    00087043
+    000A8400
+    00097043
+    000B8400
+    000A7043
+    000C8400
+    000B7043
+    000D8400
+    000C7043
+    000E8400
+    000D7043
+    000F8400
+    000E7043
+    00108400
+    000F7043
+    00118400
+    00107043
+    00128400
+    00117043
+    00138400
+    00127043
+    00148400
+    00137043
+    00158400
+    00147043
+    00168400
+    00157043
+    00178400
+    00167043
+    00188400
+    00177043
+    00198400
+    00187043
+    001A8400
+    00197043
+    001B8400
+    001A7043
+    001C8400
+    001B7043
+    001D8400
+    001C7043
+    001E8400
+    001D7043
+    001F8400
+    001E7043
+    00208400
+    001F7043
+    00218400
+    00207043
+    00228400
+    00217043
+    00238400
+    00227043
+    00248400
+    00237043
+    00258400
+    00247043
+    00268400
+    00257043
+    00278400
+    00267043
+    00288400
+    00277043
+    00298400
+    00287043
+    002A8400
+    00297043
+    002B8400
+    002A7043
+    002C8400
+    002B7043
+    002D8400
+    002C7043
+    002E8400
+    002D7043
+    002F8400
+    002E7043
+    00308400
+    002F7043
+    00318400
+    00307043
+    00328400
+    00317043
+    00338400
+    00327043
+    00348400
+    00337043
+    00358400
+    00347043
+    00368400
+    00357043
+    00378400
+    00367043
+    00388400
+    00377043
+    00398400
+    00387043
+    003A8400
+    00397043
+    003B8400
+    003A7043
+    003C8400
+    003B7043
+    003D8400
+    003C7043
+    003E8400
+    003D7043
+    003F8400
+    003E7043
+    00408400
+    003F7043
+    00808500
+    00008600
+    00007065
+    00017065
+    00027065
+    00037065
+    00047065
+    00057065
+    00067065
+    00077065
+    00087065
+    00097065
+    000A7065
+    000B7065
+    000C7065
+    000D7065
+    000E7065
+    000F7065
+    00107065
+    00117065
+    00127065
+    00137065
+    00147065
+    00157065
+    00167065
+    00177065
+    00187065
+    00197065
+    001A7065
+    001B7065
+    001C7065
+    001D7065
+    001E7065
+    001F7065
+    00207065
+    00217065
+    00227065
+    00237065
+    00247065
+    00257065
+    00267065
+    00277065
+    00287065
+    00297065
+    002A7065
+    002B7065
+    002C7065
+    002D7065
+    002E7065
+    002F7065
+    00307065
+    00317065
+    00327065
+    00337065
+    00347065
+    00357065
+    00367065
+    00377065
+    00387065
+    00397065
+    003A7065
+    003B7065
+    003C7065
+    003D7065
+    003E7065
+    003F7065
+    00048200
+    0000532D
+    000054ED
+    00808800
+    00000484
+    000004F4
+    00408700
+    00008500
+    00008600
+    00000A63
+    00006B0A
+    00005CE6
+    00000C7C
+    00000CFC
+    0000610C
+    00005B1B
+    000005B5
+    00018606
+    FFF7C026
+    00007054
+    0000F000
+    // ============================================================================
+    //  memory_scheduler  (with memory coalescing) -- BUGFIX VERSION
+    // ============================================================================
+    module memory_scheduler #(
+        parameter LINE_WORDS  = 16,
+        parameter OFFSET_BITS = 4
+    ) (
+        input             clk,
+        input             reset,
+        input  [3:0]      request,
+        input  [15:0]     active_mask,
+        input  [15:0]     addr_in [0:15],
+        input  [15:0]     sw_out  [0:15],
+        output reg [15:0] lw_out  [0:15],
+        output            stall,
+        output reg        mem_write,
+
+        input             mem_req,
+        input  [1:0]      warp_id_from_ws,
+        output reg        mem_done,
+        output reg [1:0]  warp_id_to_ws,
+        input  [3:0]      lw_destination,
+        output reg [3:0]  lw_destination_out,
+
+        input  [15:0]     lw_line_in  [0:LINE_WORDS-1],
+        output reg [15:0] addr_out,
+        output reg [15:0] sw_line_out [0:LINE_WORDS-1],
+        output reg [LINE_WORDS-1:0] sw_word_mask,
+
+        output reg [1:0]  lw_warp_id,
+        output reg        lw_ready
+    );
+
+    reg [15:0] ADDR        [0:3][0:15];
+    reg [15:0] SW_DATA     [0:3][0:15];
+    reg [1:0]  WARP_NUMBER [0:3];
+    reg        REQ_DONE    [0:3];
+    reg        OCCUPIED    [0:3];
+    reg        REQ_TYPE    [0:3];
+    reg [3:0]  DESTINATION [0:3];
+
+    parameter IDLE      = 3'b000;
+    parameter WARP      = 3'b001;
+    parameter REQ_CHECK = 3'b010;
+    parameter REQ       = 3'b011;
+    parameter WAIT      = 3'b100;
+    parameter CAPTURE   = 3'b101;
+    parameter DONE      = 3'b110;
+
+    reg [2:0] state_curr;
+
+    integer i, j;
+
+    reg request_reg;
+    reg [1:0] current_warp_in_ms;
+    reg [1:0] queue_pointer;
+
+    reg [15:0] lane_serviced;
+    reg [15:0] block_members;
+
+    assign stall =
+        (state_curr == REQ)     ||
+        (state_curr == WAIT)    ||
+        (state_curr == CAPTURE) ;
+
+    always @(posedge clk) begin
+        if (reset) begin
+
+            state_curr         <= IDLE;
+            addr_out           <= 16'h0000;
+            mem_write          <= 1'b0;
+            request_reg        <= 1'b0;
+            lw_warp_id         <= 2'b00;
+            lw_ready           <= 1'b0;
+            mem_done           <= 1'b0;
+            warp_id_to_ws      <= 2'b00;
+            current_warp_in_ms <= 2'b00;
+            queue_pointer      <= 2'b00;
+            lw_destination_out <= 4'h0;
+            lane_serviced      <= 16'h0000;
+            block_members      <= 16'h0000;
+            sw_word_mask       <= {LINE_WORDS{1'b0}};
+
+            for (i = 0; i < 16; i = i + 1)
+                lw_out[i] <= 16'h0000;
+
+            for (i = 0; i < LINE_WORDS; i = i + 1)
+                sw_line_out[i] <= 16'h0000;
+
+            for (i = 0; i < 4; i = i + 1) begin
+                WARP_NUMBER[i] <= 2'b00;
+                REQ_DONE[i]    <= 1'b1;
+                OCCUPIED[i]    <= 1'b0;
+                REQ_TYPE[i]    <= 1'b0;
+                DESTINATION[i] <= 4'h0;
+                for (j = 0; j < 16; j = j + 1) begin
+                    ADDR[i][j]    <= 16'h0000;
+                    SW_DATA[i][j] <= 16'h0000;
+                end
+            end
+
+        end else begin
+
+            case (state_curr)
+
+                IDLE: begin
+
+                    if (mem_req) begin
+                        reg found;
+                        found = 0;
+
+                        for (i = 0; i < 4; i = i + 1) begin
+                            if ((OCCUPIED[i] == 0) && (found == 0)) begin
+                                WARP_NUMBER[i] <= warp_id_from_ws;
+                                OCCUPIED[i]    <= 1'b1;
+                                REQ_DONE[i]    <= 1'b0;
+                                REQ_TYPE[i]    <= (request == 4'b0110);
+                                if (request == 4'b0110)
+                                    DESTINATION[i] <= lw_destination;
+                                found = 1;
+                                // FIX #1: store payload by queue slot i, not by warp ID
+                                for (j = 0; j < 16; j = j + 1) begin
+                                    ADDR[i][j]    <= addr_in[j];
+                                    SW_DATA[i][j] <= sw_out[j];
+                                end
+                            end
+                        end
+
+                        lane_serviced <= 16'h0000;
+                        state_curr    <= WARP;
+                    end
+
+                    else if (!(REQ_DONE[0] && REQ_DONE[1] &&
+                            REQ_DONE[2] && REQ_DONE[3])) begin
+                        lane_serviced <= 16'h0000;
+                        state_curr    <= WARP;
+                    end
+
+                    addr_out     <= 16'h0000;
+                    sw_word_mask <= {LINE_WORDS{1'b0}};
+                    mem_write    <= 1'b0;
+                    mem_done     <= 1'b0;
+                    lw_ready     <= 1'b0;
+                end
+
+                WARP: begin
+
+                    if (mem_req) begin
+                        reg found;
+                        found = 0;
+
+                        for (i = 0; i < 4; i = i + 1) begin
+                            if ((OCCUPIED[i] == 0) && (found == 0)) begin
+                                WARP_NUMBER[i] <= warp_id_from_ws;
+                                OCCUPIED[i]    <= 1'b1;
+                                REQ_DONE[i]    <= 1'b0;
+                                REQ_TYPE[i]    <= (request == 4'b0110);
+                                if (request == 4'b0110)
+                                    DESTINATION[i] <= lw_destination;
+                                found = 1;
+                                // FIX #1: store payload by queue slot i
+                                for (j = 0; j < 16; j = j + 1) begin
+                                    ADDR[i][j]    <= addr_in[j];
+                                    SW_DATA[i][j] <= sw_out[j];
+                                end
+                            end
+                        end
+                    end
+
+                    begin
+                        reg found_warp;
+                        found_warp = 0;
+
+                        for (i = 0; i < 4; i = i + 1) begin
+                            if ((REQ_DONE[i] == 0) && (found_warp == 0)) begin
+                                current_warp_in_ms <= WARP_NUMBER[i];
+                                queue_pointer      <= i[1:0];
+                                found_warp         = 1;
+                                request_reg        <= REQ_TYPE[i];
+                            end
+                        end
+
+                        state_curr  <= REQ_CHECK;
+                        // FIX #2: removed stale 'request_reg <= REQ_TYPE[queue_pointer];'
+                    end
+                end
+
+                REQ_CHECK: begin
+
+                    if (mem_req) begin
+                        reg found;
+                        found = 0;
+
+                        for (i = 0; i < 4; i = i + 1) begin
+                            if ((OCCUPIED[i] == 0) && (found == 0)) begin
+                                WARP_NUMBER[i] <= warp_id_from_ws;
+                                OCCUPIED[i]    <= 1'b1;
+                                REQ_DONE[i]    <= 1'b0;
+                                REQ_TYPE[i]    <= (request == 4'b0110);
+                                if (request == 4'b0110)
+                                    DESTINATION[i] <= lw_destination;
+                                found = 1;
+                                // FIX #1: store payload by queue slot i
+                                for (j = 0; j < 16; j = j + 1) begin
+                                    ADDR[i][j]    <= addr_in[j];
+                                    SW_DATA[i][j] <= sw_out[j];
+                                end
+                            end
+                        end
+                    end
+
+                    // FIX #2: removed duplicate assignment, kept only the one using i
+                    lane_serviced <= 16'h0000;
+                    state_curr    <= REQ;
+                end
+
+                REQ: begin
+
+                    // ---- still accept a newly arriving warp (unchanged) ----
+                    if (mem_req) begin
+                        reg found;
+                        found = 0;
+
+                        for (i = 0; i < 4; i = i + 1) begin
+                            if ((OCCUPIED[i] == 0) && (found == 0)) begin
+                                WARP_NUMBER[i] <= warp_id_from_ws;
+                                OCCUPIED[i]    <= 1'b1;
+                                REQ_DONE[i]    <= 1'b0;
+                                REQ_TYPE[i]    <= (request == 4'b0110);
+                                if (request == 4'b0110)
+                                    DESTINATION[i] <= lw_destination;
+                                found = 1;
+                                // FIX #1: store payload by queue slot i
+                                for (j = 0; j < 16; j = j + 1) begin
+                                    ADDR[i][j]    <= addr_in[j];
+                                    SW_DATA[i][j] <= sw_out[j];
+                                end
+                            end
+                        end
+                    end
+
+                    // ---- coalesced block dispatch ----
+                    begin : coalesce
+                        reg                    found_leader;
+                        integer                leader;
+                        integer                l;
+                        reg [15-OFFSET_BITS:0]  target_seg;
+                        reg [15:0]              members;
+                        reg [LINE_WORDS-1:0]    wmask;
+
+                        mem_write <= 1'b0;
+
+                        // 1) lowest-index active lane not yet serviced = block leader
+                        found_leader = 1'b0;
+                        leader       = 0;
+                        for (l = 0; l < 16; l = l + 1) begin
+                            if (active_mask[l] && !lane_serviced[l] && !found_leader) begin
+                                found_leader = 1'b1;
+                                leader       = l;
+                            end
+                        end
+
+                        if (!found_leader) begin
+                            // every active lane has been served -> warp finished
+                            state_curr              <= DONE;
+                            REQ_DONE[queue_pointer] <= 1'b1;
+                            if (request_reg) begin
+                                lw_destination_out <= DESTINATION[queue_pointer];
+                                lw_ready           <= 1'b1;
+                                lw_warp_id         <= current_warp_in_ms;
+                            end
+                        end
+                        else begin
+                            // 2) gather every active lane sharing the leader's block
+                            // FIX #1: access payload by queue_pointer, not current_warp_in_ms
+                            target_seg = ADDR[queue_pointer][leader][15:OFFSET_BITS];
+                            members    = 16'h0000;
+                            wmask      = {LINE_WORDS{1'b0}};
+
+                            for (l = 0; l < 16; l = l + 1) begin
+                                if (active_mask[l] && !lane_serviced[l] &&
+                                    (ADDR[queue_pointer][l][15:OFFSET_BITS] == target_seg))
+                                    members[l] = 1'b1;
+                            end
+
+                            // 3) issue ONE transaction for the whole block
+                            addr_out      <= {target_seg, {OFFSET_BITS{1'b0}}};
+                            block_members <= members;
+                            lane_serviced <= lane_serviced | members;
+
+                            if (!request_reg) begin
+                                // store: pack member words into the line, build mask
+                                mem_write <= 1'b1;
+                                for (l = 0; l < 16; l = l + 1) begin
+                                    if (members[l]) begin
+                                        // FIX #1: use queue_pointer for data
+                                        sw_line_out[ ADDR[queue_pointer][l][OFFSET_BITS-1:0] ]
+                                            <= SW_DATA[queue_pointer][l];
+                                        wmask[ ADDR[queue_pointer][l][OFFSET_BITS-1:0] ] = 1'b1;
+                                    end
+                                end
+                                sw_word_mask <= wmask;
+                            end
+
+                            state_curr <= WAIT;
+                        end
+                    end
+                end
+
+                WAIT: begin
+                    state_curr <= CAPTURE;
+                end
+
+                CAPTURE: begin
+                    // load: demux each member lane's word out of the returned line
+                    if (request_reg) begin
+                        integer l;
+                        for (l = 0; l < 16; l = l + 1) begin
+                            if (block_members[l])
+                                // FIX #1: use queue_pointer for address look-up
+                                lw_out[l] <= lw_line_in[ ADDR[queue_pointer][l][OFFSET_BITS-1:0] ];
+                        end
+                    end
+
+                    mem_write  <= 1'b0;
+                    state_curr <= REQ;
+                end
+
+                DONE: begin
+                    mem_done                <= 1'b1;
+                    state_curr              <= IDLE;
+                    OCCUPIED[queue_pointer] <= 1'b0;
+                    warp_id_to_ws           <= current_warp_in_ms;
+                end
+
+                default: begin
+                    state_curr <= IDLE;
+                end
+
+            endcase
+        end
+    end
+
+    endmodulemodule reg_file #(
+        parameter DATA_WIDTH = 16,
+        parameter NUM_REGS   = 16
+    )(
+        input                       clk,
+        input                       reset,
+        input  [3:0]                A1, A2, A3,
+        output [DATA_WIDTH-1:0]     RS1,
+        output [DATA_WIDTH-1:0]     RS2,
+        input  [DATA_WIDTH-1:0]     block_idx,
+        input  [DATA_WIDTH-1:0]     block_dim,
+        input  [DATA_WIDTH-1:0]     thread_idx,
+        input  [DATA_WIDTH-1:0]     WD,
+        input                       we,
+        input                       reg_en
+    );
+        reg [DATA_WIDTH-1:0] REGISTER [0:NUM_REGS-1];
+        integer i;
+
+        // Forwarding: remember last write
+        reg [3:0]               last_write_addr;
+        reg [DATA_WIDTH-1:0]    last_write_data;
+        reg                     last_write_valid;
+
+        // Read function with forwarding
+        function [DATA_WIDTH-1:0] rd_reg;
+            input [3:0] a;
+            begin
+                if (last_write_valid && a == last_write_addr)
+                    rd_reg = last_write_data;
+                else begin
+                    case (a)
+                        4'd0:    rd_reg = {DATA_WIDTH{1'b0}};
+                        4'd13:   rd_reg = block_idx;
+                        4'd14:   rd_reg = block_dim;
+                        4'd15:   rd_reg = thread_idx;
+                        default: rd_reg = REGISTER[a];
+                    endcase
+                end
+            end
+        endfunction
+
+        assign RS1 = rd_reg(A1);
+        assign RS2 = rd_reg(A2);
+
+        always @(posedge clk) begin
+            if (reset) begin
+                last_write_valid <= 1'b0;
+                for (i = 0; i < NUM_REGS; i = i + 1)
+                    REGISTER[i] <= {DATA_WIDTH{1'b0}};
+            end else begin
+                // Update REGISTER array normally (NBA)
+                if (we && A3 != 4'd0 && A3 != 4'd13 && A3 != 4'd14 && A3 != 4'd15)
+                    REGISTER[A3] <= WD;
+
+                // Capture last write for forwarding (same conditions)
+                if (we && A3 != 4'd0 && A3 != 4'd13 && A3 != 4'd14 && A3 != 4'd15) begin
+                    last_write_addr  <= A3;
+                    last_write_data  <= WD;
+                    last_write_valid <= 1'b1;
+                end else begin
+                    // Invalidate after one cycle (forward only the immediately preceding write)
+                    last_write_valid <= 1'b0;
+                end
+            end
+        end
+    endmodule// ============================================================
+    // testbench_selfcheck.v -- self-checking GPU matrix multiply
+    // ============================================================
+    `timescale 1ns / 1ps
+    module tb_stress;
+        reg         clk, reset;
+        wire [15:0] debug_pc;
+        wire [15:0] debug_regs [0:3][0:15][0:15];
+        wire [15:0] debug_lw_out, debug_alu_result;
+        wire        done;
+
+        integer cycle_cnt;
+
+        gpu_top #(.NUMBER_OF_WARPS(4), .NUMBER_OF_THREADS(16), .DATA_WIDTH(16)) dut (
+            .clk(clk), .reset(reset),
+            .lane_select(4'h0),   // not used for checking
+            .debug_pc(debug_pc),
+            .debug_regs(debug_regs),
+            .debug_lw_out(debug_lw_out),
+            .debug_alu_result(debug_alu_result),
+            .done(done)
+        );
+
+        always #5 clk = ~clk;
+
+        // ---------------------------------------------------------------
+        // Backdoor memory read (hierarchical peek)
+        // ---------------------------------------------------------------
+        function [15:0] peek;
+            input [15:0] addr;
+            reg [7:0] line;
+            reg [3:0] bank;
+            begin
+                bank = addr[3:0];
+                line = addr[11:4];
+                case (bank)
+                    0: peek = dut.dmem.bank[0].u_bank.data_memory[line][15:0];
+                    1: peek = dut.dmem.bank[1].u_bank.data_memory[line][15:0];
+                    2: peek = dut.dmem.bank[2].u_bank.data_memory[line][15:0];
+                    3: peek = dut.dmem.bank[3].u_bank.data_memory[line][15:0];
+                    4: peek = dut.dmem.bank[4].u_bank.data_memory[line][15:0];
+                    5: peek = dut.dmem.bank[5].u_bank.data_memory[line][15:0];
+                    6: peek = dut.dmem.bank[6].u_bank.data_memory[line][15:0];
+                    7: peek = dut.dmem.bank[7].u_bank.data_memory[line][15:0];
+                    8: peek = dut.dmem.bank[8].u_bank.data_memory[line][15:0];
+                    9: peek = dut.dmem.bank[9].u_bank.data_memory[line][15:0];
+                    10: peek = dut.dmem.bank[10].u_bank.data_memory[line][15:0];
+                    11: peek = dut.dmem.bank[11].u_bank.data_memory[line][15:0];
+                    12: peek = dut.dmem.bank[12].u_bank.data_memory[line][15:0];
+                    13: peek = dut.dmem.bank[13].u_bank.data_memory[line][15:0];
+                    14: peek = dut.dmem.bank[14].u_bank.data_memory[line][15:0];
+                    15: peek = dut.dmem.bank[15].u_bank.data_memory[line][15:0];
+                    default: peek = 16'hxxxx;
+                endcase
+            end
+        endfunction
+
+        // ---------------------------------------------------------------
+        // Expected C = A * B  (same data as in memfile.hex)
+        // ---------------------------------------------------------------
+        reg [15:0] A [0:3][0:3];
+        reg [15:0] B [0:3][0:15];
+        reg [15:0] C_exp [0:3][0:15];
+        integer i, j, k;
+        reg [31:0] temp;
+
+        // Performance counters
+        integer instr_count;
+        reg     counting;
+
+        initial begin
+            // ---- Initialise expected values ----
+            for (i = 0; i < 4; i = i + 1)
+                for (k = 0; k < 4; k = k + 1)
+                    A[i][k] = i * 4 + k + 1;        // 1..16
+
+            for (k = 0; k < 4; k = k + 1)
+                for (j = 0; j < 16; j = j + 1)
+                    B[k][j] = k * 16 + j + 1;       // 1..64
+
+            for (i = 0; i < 4; i = i + 1)
+                for (j = 0; j < 16; j = j + 1) begin
+                    temp = 0;
+                    for (k = 0; k < 4; k = k + 1)
+                        temp = temp + A[i][k] * B[k][j];
+                    C_exp[i][j] = temp[15:0];
+                end
+
+            // ---- Simulation flow ----
+            clk = 0;
+            reset = 1;
+            cycle_cnt = 0;
+            instr_count = 0;
+            counting = 0;
+
+            #15;                                     // hold reset for ~1.5 cycles
+            reset = 0;
+            @(negedge clk);                          // wait until clock low after deassert
+            // Force all warp PCs to 0 (they default to 0,16,32,48)
+            dut.warp_inst.WARP_PC[0] = 16'h0000;
+            dut.warp_inst.WARP_PC[1] = 16'h0000;
+            dut.warp_inst.WARP_PC[2] = 16'h0000;
+            dut.warp_inst.WARP_PC[3] = 16'h0000;
+            // (finished flags are already 0 after reset)
+
+            @(posedge clk);
+            counting = 1;                            // start counting performance
+
+            // Wait for done or timeout
+            while (!done && cycle_cnt < 50000) begin
+                @(posedge clk);
+                cycle_cnt = cycle_cnt + 1;
+                if (dut.running) instr_count = instr_count + 1;
+            end
+
+            counting = 0;
+
+            // ---- Check results ----
+            if (done) begin
+                integer errors;
+                errors = 0;
+                for (i = 0; i < 4; i = i + 1)
+                    for (j = 0; j < 16; j = j + 1) begin
+                        if (peek(128 + i*16 + j) !== C_exp[i][j]) begin
+                            $display("ERROR: C[%0d][%0d] = %h, expected %h",
+                                    i, j, peek(128 + i*16 + j), C_exp[i][j]);
+                            errors = errors + 1;
+                        end
+                    end
+
+                $display("===========================================");
+                $display(" GPU Matrix Multiply Self-Check Test");
+                $display("===========================================");
+                $display(" Total cycles:          %0d", cycle_cnt);
+                $display(" Total instructions:     %0d", instr_count);
+                $display(" IPC:                   %0.3f", 
+                        (instr_count > 0) ? $itor(instr_count)/$itor(cycle_cnt) : 0.0);
+                $display(" MACs computed:         256 (4x4 * 4x16)");
+                $display(" Throughput (MAC/cycle):%0.3f",
+                        (cycle_cnt > 0) ? 256.0 / cycle_cnt : 0.0);
+                if (errors == 0) begin
+                    $display(" Result check: PASS");
+                    $display("===========================================");
+                    $finish;
+                end else begin
+                    $display(" Result check: FAIL (%0d errors)", errors);
+                    $display("===========================================");
+                    $finish;
+                end
+            end else begin
+                $display("FAIL: Timeout after %0d cycles", cycle_cnt);
+                $finish;
+            end
+        end
+
+        // Optional: print PC and instruction each cycle (for debug)
+        always @(posedge clk) begin
+            if (dut.running && dut.warp_ready_mask[0])
+                $display("Cycle %0d: PC = %h, Instr = %h", cycle_cnt, debug_pc, dut.instr);
+        end
+    endmodule`timescale 1ns/1ps
+
+    module tb_warp_memory_deadlock;
+
+    reg clk;
+    reg reset;
+
+    // ========================================================
+    // Warp Scheduler Interface
+    // ========================================================
+
+    reg         mem_req;
+    reg         mem_done;
+    reg  [1:0]  warp_id_from_ms;
+
+    reg         halt;
+    reg         hold;
+    reg         redirect;
+    reg [15:0]  pc_target;
+
+    wire [1:0]  warp_id_to_ms;
+    wire [1:0]  current_warp_id;
+    wire [1:0] warp_id_from_ms_ms;
+    wire [15:0] warp_ready;
+    wire [15:0] warp_ready_mask;
+    wire        running;
+    wire        done;
+
+    // ========================================================
+    // Memory Scheduler Interface
+    // ========================================================
+
+    reg  [3:0] request;
+
+    reg [15:0] addr_in [0:15];
+    reg [15:0] sw_out  [0:15];
+
+    wire [15:0] lw_out [0:15];
+
+    wire stall;
+    wire mem_write;
+
+    wire [15:0] addr_out;
+
+    wire [15:0] sw_line_out [0:15];
+    wire [15:0] lw_line_in  [0:15];
+
+    wire [15:0] sw_word_mask;
+
+    wire [1:0] lw_warp_id;
+    wire       lw_ready;
+
+    reg [3:0] lw_destination;
+    wire [3:0] lw_destination_out;
+
+    // ========================================================
+    // DUTs
+    // ========================================================
+
+    warp_scheduler ws (
+        .clk(clk),
+        .rst(reset),
+
+        .mem_req(mem_req),
+        .mem_done(mem_done),
+
+        .warp_id_from_ms(warp_id_from_ms),
+
+        .halt(halt),
+        .hold(hold),
+
+        .redirect(redirect),
+        .pc_target(pc_target),
+
+        .warp_id_to_ms(warp_id_to_ms),
+
+        .warp_ready(warp_ready),
+        .warp_ready_mask(warp_ready_mask),
+        .current_warp_id(current_warp_id),
+
+        .running(running),
+        .done(done)
+    );
+
+    memory_scheduler ms (
+        .clk(clk),
+        .reset(reset),
+
+        .request(request),
+        .active_mask(16'hFFFF),
+
+        .addr_in(addr_in),
+        .sw_out(sw_out),
+
+        .lw_out(lw_out),
+
+        .stall(stall),
+        .mem_write(mem_write),
+
+        .mem_req(mem_req),
+
+        .warp_id_from_ws(warp_id_to_ms),
+
+        .mem_done(mem_done_ms),
+        .warp_id_to_ws(warp_id_from_ms_ms),
+
+        .lw_destination(lw_destination),
+        .lw_destination_out(lw_destination_out),
+
+        .lw_line_in(lw_line_in),
+
+        .addr_out(addr_out),
+        .sw_line_out(sw_line_out),
+        .sw_word_mask(sw_word_mask),
+
+        .lw_warp_id(lw_warp_id),
+        .lw_ready(lw_ready)
+    );
+
+    data_memory_line dmem (
+        .clk(clk),
+
+        .mem_write(mem_write),
+
+        .addr_base(addr_out),
+
+        .sw_word_mask(sw_word_mask),
+
+        .sw_line_out(sw_line_out),
+
+        .lw_line_in(lw_line_in)
+    );
+
+    // ========================================================
+    // Manual connection
+    // ========================================================
+
+    assign mem_done_ms_wire = mem_done_ms;
+
+    always @(*) begin
+        mem_done        = mem_done_ms;
+        warp_id_from_ms = warp_id_from_ms_ms;
+    end
+
+    // ========================================================
+    // Clock
+    // ========================================================
+
+    always #5 clk = ~clk;
+
+    // ========================================================
+    // Helpers
+    // ========================================================
+
+    integer i;
+
+    task issue_load;
+    begin
+
+        request = 4'b0110; // LW
+
+        for(i=0;i<16;i=i+1)
+            addr_in[i] = i;
+
+        mem_req = 1'b1;
+
+        @(posedge clk);
+
+        mem_req = 1'b0;
+
+    end
+    endtask
+
+    // ========================================================
+    // Test
+    // ========================================================
+
+    initial begin
+
+        clk = 0;
+        reset = 1;
+
+        mem_req = 0;
+        mem_done = 0;
+        warp_id_from_ms = 0;
+
+        halt = 0;
+        hold = 0;
+        redirect = 0;
+        pc_target = 0;
+
+        request = 4'b0110;
+        lw_destination = 4'd1;
+
+        for(i=0;i<16;i=i+1) begin
+            addr_in[i] = i;
+            sw_out[i]  = 16'h1000 + i;
+        end
+
+        repeat(3) @(posedge clk);
+
+        reset = 0;
+
+        //----------------------------------------------------
+        // Request #1
+        //----------------------------------------------------
+
+        $display("\n--- ISSUE LOAD FOR WARP0 ---");
+
+        issue_load();
+
+        //----------------------------------------------------
+        // Wait until memory scheduler enters WAIT/CAPTURE
+        //----------------------------------------------------
+
+        repeat(2) @(posedge clk);
+
+        //----------------------------------------------------
+        // BUG TRIGGER
+        //----------------------------------------------------
+        // Scheduler cannot accept request now.
+        // Warp scheduler WILL stall warp.
+        //----------------------------------------------------
+
+        $display("\n--- ISSUE LOAD DURING WAIT/CAPTURE ---");
+
+        issue_load();
+
+        //----------------------------------------------------
+        // Observe
+        //----------------------------------------------------
+
+        repeat(40) @(posedge clk);
+
+        $display("\n=================================================");
+        $display("Current Warp       = %0d", current_warp_id);
+        $display("Warp0 Stall        = %0d", ws.WARP_STALL[0]);
+        $display("Warp1 Stall        = %0d", ws.WARP_STALL[1]);
+        $display("Warp2 Stall        = %0d", ws.WARP_STALL[2]);
+        $display("Warp3 Stall        = %0d", ws.WARP_STALL[3]);
+
+        $display("Memory State       = %0d", ms.state_curr);
+
+        $display("REQ_DONE[0]        = %0d", ms.REQ_DONE[0]);
+        $display("REQ_DONE[1]        = %0d", ms.REQ_DONE[1]);
+
+        $display("=================================================\n");
+
+        //----------------------------------------------------
+        // Failure Detection
+        //----------------------------------------------------
+
+        if(ws.WARP_STALL[0] &&
+        !mem_done_ms &&
+        current_warp_id != 0)
+        begin
+            $display("DEADLOCK DETECTED");
+            $display("Memory request lost");
+            $display("Warp remains stalled forever");
+        end
+        else begin
+            $display("TEST FAILED TO REPRODUCE BUG");
+        end
+
+        $finish;
+    end
+
+    endmodule// ============================================================
+    // testbench.v -- self-checking, uses memfile.hex
+    // ============================================================
+    `timescale 1ns / 1ps
+    module testbench_gpu_top;
+        reg         clk, reset;
+        reg  [3:0]  lane_select;
+        wire [15:0] debug_pc;
+        wire [15:0] debug_regs [0:3][0:15][0:15];
+        wire [15:0] debug_lw_out, debug_alu_result;
+        wire        done;
+
+        integer cycle_cnt;
+
+        gpu_top #(.NUMBER_OF_WARPS(4), .NUMBER_OF_THREADS(16), .DATA_WIDTH(16)) dut (
+            .clk(clk), .reset(reset), .lane_select(lane_select),
+            .debug_pc(debug_pc), .debug_regs(debug_regs),
+            .debug_lw_out(debug_lw_out), .debug_alu_result(debug_alu_result),
+            .done(done)
+        );
+
+        always #5 clk = ~clk;
+
+        initial begin
+            clk = 0;
+            reset = 1;
+            lane_select = 0;
+            cycle_cnt = 0;
+
+            #15 reset = 0;
+
+            while (!done && cycle_cnt < 5000) begin
+                @(posedge clk);
+                cycle_cnt = cycle_cnt + 1;
+            end
+
+            if (done) begin
+                $display("SUCCESS: GPU completed execution in %0d cycles", cycle_cnt);
+            end else begin
+                $display("FAIL: Timeout after %0d cycles", cycle_cnt);
+            end
+
+            $finish;
+        end
+
+        // Optional: print PC and instruction each cycle
+        always @(posedge clk) begin
+            if (dut.running && dut.warp_ready_mask[0])
+                $display("Cycle %0d: PC = %h, Instr = %h", cycle_cnt, debug_pc, dut.instr);
+        end
+    endmodule// ============================================================================
+    //  warp_scheduler  (pure Verilog, no SystemVerilog enum/logic/always_ff)
+    // ----------------------------------------------------------------------------
+    //  Aligned to the coalescing memory_scheduler handshake:
+    //
+    //    * The WS presents one warp per cycle: warp_id_to_ms = current_warp,
+    //      together with that warp's PC (warp_ready) and active mask
+    //      (warp_ready_mask).
+    //
+    //    * When the datapath/top decodes a memory instruction for the active warp
+    //      it asserts mem_req for ONE cycle. On that same cycle:
+    //          - the memory_scheduler latches the request, tagging it with
+    //            warp_id_from_ws ( == warp_id_to_ms == current_warp ), and
+    //          - the warp_scheduler marks the active warp stalled and round-robins
+    //            to the next runnable warp.
+    //
+    //    * When the memory_scheduler finishes a warp it pulses mem_done for one
+    //      cycle together with warp_id_to_ws ( -> warp_id_from_ms here ). The WS
+    //      clears that warp's stall and steps its PC past the memory instruction.
+    //
+    //    * When the active warp reaches HALT, top asserts halt for one cycle; the
+    //      WS marks the warp finished and switches away permanently. done asserts
+    //      once every warp is finished.
+    //
+    //  Note: the PC initialisation below is written for NUMBER_OF_WARPS = 4 (one
+    //  warp every 16 instructions), matching the original design and the 2-bit
+    //  warp-id ports shared with the memory_scheduler.
+    // ============================================================================
+    // ============================================================================
+    //  warp_scheduler  (pure Verilog) -- the doc-3 coalescing-aligned scheduler,
+    //  EXTENDED for an executing core:
+    //     + running   : 1 only in the RUN state (a real instruction commits this
+    //                   cycle).  The 1-cycle SWITCH after a stall/halt is a bubble.
+    //     + redirect/pc_target : branch / jump next-PC for the current warp.
+    //  Memory handshake (mem_req/mem_done/warp ids) is UNCHANGED from doc 3.
+    // ============================================================================
+    module warp_scheduler #(
+        parameter NUMBER_OF_WARPS = 4
+    ) (
+        input             clk,
+        input             rst,
+        input             mem_req,         // memory instruction issuing this cycle
+        input             mem_done,        // from memory_scheduler
+        input      [1:0]  warp_id_from_ms, // from memory_scheduler (its warp_id_to_ws)
+        input             halt,            // current warp hit HALT
+        input             hold,            // mem op pending but scheduler busy: freeze warp
+        input             redirect,        // branch/jump taken for current warp
+        input      [15:0] pc_target,       // redirect target PC
+
+        output     [1:0]  warp_id_to_ms,
+        output     [15:0] warp_ready,
+        output     [15:0] warp_ready_mask,
+        output     [1:0]  current_warp_id,
+        output            running,         // high in RUN (commit cycle)
+        output            done             // all warps finished
+    );
+        reg [15:0] WARP_PC       [0:NUMBER_OF_WARPS-1];
+        reg [15:0] WARP_MASK     [0:NUMBER_OF_WARPS-1];
+        reg        WARP_STALL    [0:NUMBER_OF_WARPS-1];
+        reg        WARP_FINISHED [0:NUMBER_OF_WARPS-1];
+        reg [1:0]  current_warp;
+
+        localparam RUN = 1'b0, SWITCH = 1'b1;
+        reg state_curr;
+
+        integer i;
+        reg [1:0] next_warp;
+        reg       next_found;
+        integer   off, cand;
+
+        assign warp_id_to_ms   = current_warp;
+        assign current_warp_id = current_warp;
+        assign warp_ready      = WARP_PC[current_warp];
+        assign warp_ready_mask = WARP_MASK[current_warp];
+        assign running         = (state_curr == RUN);
+        assign done = WARP_FINISHED[0] & WARP_FINISHED[1] &
+                    WARP_FINISHED[2] & WARP_FINISHED[3];
+
+        always @(posedge clk) begin
+            if (rst) begin
+                for (i = 0; i < NUMBER_OF_WARPS; i = i + 1) begin
+                    WARP_STALL[i]    <= 1'b0;
+                    WARP_FINISHED[i] <= 1'b0;
+                    WARP_MASK[i]     <= 16'hFFFF;
+                end
+                WARP_PC[0] <= 16'h0000;
+                WARP_PC[1] <= 16'h0010;
+                WARP_PC[2] <= 16'h0020;
+                WARP_PC[3] <= 16'h0030;
+                current_warp <= 2'b00;
+                state_curr   <= RUN;
+            end
+            else begin
+                // (A) memory completion: clear stall + step PC past the mem inst.
+                if (mem_done) begin
+                    WARP_STALL[warp_id_from_ms] <= 1'b0;
+                    WARP_PC[warp_id_from_ms]    <= WARP_PC[warp_id_from_ms] + 16'd1;
+                end
+
+                // (B) scheduling FSM
+                case (state_curr)
+                    RUN: begin
+                        if (mem_req) begin
+                            WARP_STALL[current_warp] <= 1'b1;
+                            state_curr               <= SWITCH;
+                        end
+                        else if (halt) begin
+                            WARP_FINISHED[current_warp] <= 1'b1;
+                            state_curr                  <= SWITCH;
+                        end
+                        else if (hold) begin
+                            // memory op waiting for the scheduler: hold PC, no commit
+                        end
+                        else begin
+                            WARP_PC[current_warp] <=
+                                redirect ? pc_target : (WARP_PC[current_warp] + 16'd1);
+                        end
+                    end
+                    SWITCH: begin
+                        next_found = 1'b0;
+                        next_warp  = current_warp;
+                        for (off = 1; off <= NUMBER_OF_WARPS; off = off + 1) begin
+                            cand = (current_warp + off) % NUMBER_OF_WARPS;
+                            if (!next_found && !WARP_STALL[cand] && !WARP_FINISHED[cand]) begin
+                                next_found = 1'b1;
+                                next_warp  = cand[1:0];
+                            end
+                        end
+                        if (next_found) begin
+                            current_warp <= next_warp;
+                            state_curr   <= RUN;
+                        end
+                    end
+                    default: state_curr <= RUN;
+                endcase
+            end
+        end
+    endmodule
