@@ -213,6 +213,8 @@ Current GPU ISA supports:
 ADD
 SUB
 ADDI
+MUL 
+DIV
 ```
 
 ## Logic
@@ -452,7 +454,7 @@ A fully open-source heterogeneous computing platform built entirely around the R
 
 # Author
 
-**Suyog Raj Pandey**
+**Bibhav Jha**
 
 Computer Engineering Research Project
 
