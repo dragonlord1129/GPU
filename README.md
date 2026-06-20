@@ -464,6 +464,4 @@ Exploring GPU microarchitecture, SIMT execution, and heterogeneous RISC-V comput
 
 ## License
 
-MIT License
-
 Feel free to use, modify, and extend this project for educational and research purposes.
