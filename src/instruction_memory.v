@@ -1,15 +1,8 @@
-// ============================
-// Instruction Memory Module
-// ============================
 module instruction_memory (
-    input [7:0] A,              // Address to fetch instruction
-    output [31:0] RD             // Instruction read
+    input  [15:0] A,             // 16‑bit PC
+    output [31:0] RD
 );
-    reg [31:0] memory [0:255]; // Instruction memory array
-
-    assign RD = memory[A];
-
-    initial begin
-        $readmemh("memfile.hex", memory); // Load instructions from file
-    end
+    reg [31:0] memory [0:32767]; // depth 32768, index 15 bits
+    assign RD = memory[A[14:0]]; // use lower 15 bits to avoid wrap
+    initial $readmemh("memfile.hex", memory);
 endmodule

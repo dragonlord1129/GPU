@@ -1,4 +1,32 @@
-// ============================================================
+module alu_control(
+    input [3:0] opcode,
+    output reg [3:0] ALUControl
+);
+
+always @(*) begin
+
+    case(opcode)
+
+        4'h0: ALUControl = 4'b0000; // ADD
+        4'h1: ALUControl = 4'b0001; // SUB
+        4'h2: ALUControl = 4'b0010; // AND
+        4'h3: ALUControl = 4'b0011; // OR
+        4'h4: ALUControl = 4'b0100; // XOR
+        4'h5: ALUControl = 4'b0101; // MUL
+
+        4'h6: ALUControl = 4'b0000; // LW addr calc
+        4'h7: ALUControl = 4'b0000; // SW addr calc
+
+        4'h8: ALUControl = 4'b0001; // BEQ compare
+
+        default:
+            ALUControl = 4'b0000;
+
+    endcase
+
+end
+
+endmodule// ============================================================
 // ALU MODULE
 // ============================================================
 
@@ -368,6 +396,22 @@ endmodulemodule imm_gen #(parameter DATA_WIDTH = 16)(
     output [DATA_WIDTH-1:0]  imm_out
 );
     assign imm_out = imm[DATA_WIDTH-1:0];
+endmodulemodule instruction_decoder(
+    input [31:0] instruction,
+
+    output [3:0] opcode,
+    output [3:0] rd,
+    output [3:0] rs1,
+    output [3:0] rs2,
+    output [15:0] imm
+);
+
+assign opcode = instruction[31:28];
+assign rd     = instruction[27:24];
+assign rs1    = instruction[23:20];
+assign rs2    = instruction[19:16];
+assign imm    = instruction[15:0];
+
 endmodulemodule instruction_memory (
     input  [15:0] A,             // 16‑bit PC
     output [31:0] RD
@@ -375,6 +419,190 @@ endmodulemodule instruction_memory (
     reg [31:0] memory [0:32767]; // depth 32768, index 15 bits
     assign RD = memory[A[14:0]]; // use lower 15 bits to avoid wrap
     initial $readmemh("memfile.hex", memory);
+endmodulemodule load_return_unit(
+    input lw_ready,
+
+    input [15:0] load_data,
+    input [3:0] destination_reg,
+
+    output reg reg_write,
+    output reg [3:0] rd,
+    output reg [15:0] wb_data
+);
+
+always @(*) begin
+
+    reg_write = lw_ready;
+    rd        = destination_reg;
+    wb_data   = load_data;
+
+end
+
+endmodulemodule main_control(
+    input [3:0] opcode,
+
+    output reg RegWrite,
+    output reg MemRead,
+    output reg MemWrite,
+    output reg Branch,
+    output reg Jump,
+    output reg Halt,
+    output reg ALUSrc
+);
+
+always @(*) begin
+
+    RegWrite = 0;
+    MemRead  = 0;
+    MemWrite = 0;
+    Branch   = 0;
+    Jump     = 0;
+    Halt     = 0;
+    ALUSrc   = 0;
+
+    case(opcode)
+
+        4'h0,
+        4'h1,
+        4'h2,
+        4'h3,
+        4'h4,
+        4'h5:
+            RegWrite = 1;
+
+        4'h6: begin
+            RegWrite = 1;
+            MemRead  = 1;
+            ALUSrc   = 1;
+        end
+
+        4'h7: begin
+            MemWrite = 1;
+            ALUSrc   = 1;
+        end
+
+        4'h8:
+            Branch = 1;
+
+        4'h9:
+            Jump = 1;
+
+        4'hA:
+            Halt = 1;
+
+    endcase
+
+end
+
+endmodulemodule main_decoder(
+    input  [3:0] opcode,
+
+    output reg RegWrite,
+    output reg MemRead,
+    output reg MemWrite,
+    output reg ALUSrc,
+    output reg Branch,
+    output reg Jump,
+    output reg Halt,
+
+    output reg [3:0] ALUControl,
+    output reg [1:0] ResultSrc
+);
+
+always @(*) begin
+
+    RegWrite  = 0;
+    MemRead   = 0;
+    MemWrite  = 0;
+    ALUSrc    = 0;
+    Branch    = 0;
+    Jump      = 0;
+    Halt      = 0;
+
+    ALUControl = 4'b0000;
+    ResultSrc  = 2'b00;
+
+    case(opcode)
+
+        4'h0: begin           // ADD
+            RegWrite  = 1;
+            ALUControl = 4'b0000;
+        end
+
+        4'h1: begin           // SUB
+            RegWrite  = 1;
+            ALUControl = 4'b0001;
+        end
+
+        4'h2: begin           // AND
+            RegWrite  = 1;
+            ALUControl = 4'b0010;
+        end
+
+        4'h3: begin           // OR
+            RegWrite  = 1;
+            ALUControl = 4'b0011;
+        end
+
+        4'h4: begin           // XOR
+            RegWrite  = 1;
+            ALUControl = 4'b0100;
+        end
+
+        4'h5: begin           // MUL
+            RegWrite  = 1;
+            ALUControl = 4'b0101;
+        end
+
+        4'h6: begin           // LW
+            RegWrite  = 1;
+            MemRead   = 1;
+            ALUSrc    = 1;
+            ALUControl = 4'b0000;
+            ResultSrc  = 2'b01;
+        end
+
+        4'h7: begin           // SW
+            MemWrite  = 1;
+            ALUSrc    = 1;
+            ALUControl = 4'b0000;
+        end
+
+        4'h8: begin           // BEQ
+            Branch    = 1;
+            ALUControl = 4'b0001;
+        end
+
+        4'h9: begin           // JUMP
+            Jump = 1;
+        end
+
+        4'hA: begin           // HALT
+            Halt = 1;
+        end
+
+        default: begin
+        end
+
+    endcase
+
+end
+
+endmodulemodule memory_request_generator(
+    input MemRead,
+    input MemWrite,
+
+    output mem_req,
+    output [3:0] request
+);
+
+assign mem_req = MemRead | MemWrite;
+
+assign request =
+        MemRead  ? 4'b0110 :
+        MemWrite ? 4'b0111 :
+                   4'b0000;
+
 endmodulemodule memory_scheduler #(
     parameter LINE_WORDS  = 16,
     parameter OFFSET_BITS = 4
@@ -650,6 +878,72 @@ endmodulemodule memory_scheduler #(
             endcase
         end
     end
+endmodulemodule reg_file #(
+    parameter DATA_WIDTH = 16,
+    parameter NUM_REGS   = 16
+)(
+    input                       clk,
+    input                       reset,
+    input  [3:0]                A1, A2, A3,
+    output [DATA_WIDTH-1:0]     RS1,
+    output [DATA_WIDTH-1:0]     RS2,
+    input  [DATA_WIDTH-1:0]     block_idx,
+    input  [DATA_WIDTH-1:0]     block_dim,
+    input  [DATA_WIDTH-1:0]     thread_idx,
+    input  [DATA_WIDTH-1:0]     WD,
+    input                       we,
+    input                       reg_en
+);
+    reg [DATA_WIDTH-1:0] REGISTER [0:NUM_REGS-1];
+    integer i;
+
+    // Forwarding: remember last write
+    reg [3:0]               last_write_addr;
+    reg [DATA_WIDTH-1:0]    last_write_data;
+    reg                     last_write_valid;
+
+    // Read function with forwarding
+    function [DATA_WIDTH-1:0] rd_reg;
+        input [3:0] a;
+        begin
+            if (last_write_valid && a == last_write_addr)
+                rd_reg = last_write_data;
+            else begin
+                case (a)
+                    4'd0:    rd_reg = {DATA_WIDTH{1'b0}};
+                    4'd13:   rd_reg = block_idx;
+                    4'd14:   rd_reg = block_dim;
+                    4'd15:   rd_reg = thread_idx;
+                    default: rd_reg = REGISTER[a];
+                endcase
+            end
+        end
+    endfunction
+
+    assign RS1 = rd_reg(A1);
+    assign RS2 = rd_reg(A2);
+
+    always @(posedge clk) begin
+        if (reset) begin
+            last_write_valid <= 1'b0;
+            for (i = 0; i < NUM_REGS; i = i + 1)
+                REGISTER[i] <= {DATA_WIDTH{1'b0}};
+        end else begin
+            // Update REGISTER array normally (NBA)
+            if (we && A3 != 4'd0 && A3 != 4'd13 && A3 != 4'd14 && A3 != 4'd15)
+                REGISTER[A3] <= WD;
+
+            // Capture last write for forwarding (same conditions)
+            if (we && A3 != 4'd0 && A3 != 4'd13 && A3 != 4'd14 && A3 != 4'd15) begin
+                last_write_addr  <= A3;
+                last_write_data  <= WD;
+                last_write_valid <= 1'b1;
+            end else begin
+                // Invalidate after one cycle (forward only the immediately preceding write)
+                last_write_valid <= 1'b0;
+            end
+        end
+    end
 endmodule// ============================================================================
 //  warp_scheduler  (pure Verilog, no SystemVerilog enum/logic/always_ff)
 // ----------------------------------------------------------------------------
@@ -787,70 +1081,17 @@ module warp_scheduler #(
             endcase
         end
     end
-endmodulemodule reg_file #(
-    parameter DATA_WIDTH = 16,
-    parameter NUM_REGS   = 16
-)(
-    input                       clk,
-    input                       reset,
-    input  [3:0]                A1, A2, A3,
-    output [DATA_WIDTH-1:0]     RS1,
-    output [DATA_WIDTH-1:0]     RS2,
-    input  [DATA_WIDTH-1:0]     block_idx,
-    input  [DATA_WIDTH-1:0]     block_dim,
-    input  [DATA_WIDTH-1:0]     thread_idx,
-    input  [DATA_WIDTH-1:0]     WD,
-    input                       we,
-    input                       reg_en
+endmodulemodule writeback_mux(
+    input [15:0] alu_result,
+    input [15:0] mem_result,
+    input MemRead,
+
+    output [15:0] wb_data
 );
-    reg [DATA_WIDTH-1:0] REGISTER [0:NUM_REGS-1];
-    integer i;
 
-    // Forwarding: remember last write
-    reg [3:0]               last_write_addr;
-    reg [DATA_WIDTH-1:0]    last_write_data;
-    reg                     last_write_valid;
+assign wb_data =
+        MemRead ?
+        mem_result :
+        alu_result;
 
-    // Read function with forwarding
-    function [DATA_WIDTH-1:0] rd_reg;
-        input [3:0] a;
-        begin
-            if (last_write_valid && a == last_write_addr)
-                rd_reg = last_write_data;
-            else begin
-                case (a)
-                    4'd0:    rd_reg = {DATA_WIDTH{1'b0}};
-                    4'd13:   rd_reg = block_idx;
-                    4'd14:   rd_reg = block_dim;
-                    4'd15:   rd_reg = thread_idx;
-                    default: rd_reg = REGISTER[a];
-                endcase
-            end
-        end
-    endfunction
-
-    assign RS1 = rd_reg(A1);
-    assign RS2 = rd_reg(A2);
-
-    always @(posedge clk) begin
-        if (reset) begin
-            last_write_valid <= 1'b0;
-            for (i = 0; i < NUM_REGS; i = i + 1)
-                REGISTER[i] <= {DATA_WIDTH{1'b0}};
-        end else begin
-            // Update REGISTER array normally (NBA)
-            if (we && A3 != 4'd0 && A3 != 4'd13 && A3 != 4'd14 && A3 != 4'd15)
-                REGISTER[A3] <= WD;
-
-            // Capture last write for forwarding (same conditions)
-            if (we && A3 != 4'd0 && A3 != 4'd13 && A3 != 4'd14 && A3 != 4'd15) begin
-                last_write_addr  <= A3;
-                last_write_data  <= WD;
-                last_write_valid <= 1'b1;
-            end else begin
-                // Invalidate after one cycle (forward only the immediately preceding write)
-                last_write_valid <= 1'b0;
-            end
-        end
-    end
 endmodule

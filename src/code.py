@@ -1,71 +1,48 @@
-#!/usr/bin/env python3
-OP = dict(ADD=0,SUB=1,AND=2,OR=3,XOR=4,MUL=5,LW=6,SW=7,ADDI=8,SUBI=9,
-          SLT=0xA,BEQ=0xB,BLT=0xC,JMP=0xD,DIV=0xE,HALT=0xF)
+# generate_hex.py – creates instruction and data memory initialization files
 
-def enc_rrr(op, rd, rs1, rs2):
-    return (OP[op]<<12) | (rd<<8) | (rs2<<4) | rs1
+# Instruction memory: 32768 words (32-bit each)
+INSTR_DEPTH = 32768
+instr_mem = [0] * INSTR_DEPTH
 
-def enc_rri(op, rd, rs1, imm):
-    return ((imm & 0xFFFF) << 16) | (OP[op]<<12) | (rd<<8) | rs1
+# Test program (warp 0)
+instr_mem[0x0000] = 0x04000805   # LW r1, 0x0805(r0)
+instr_mem[0x0001] = 0x04000806   # LW r2, 0x0806(r0)
+instr_mem[0x0002] = 0x00221800   # ADD r3, r1, r2
+instr_mem[0x0003] = 0x08030807   # SW r3, 0x0807(r0)
+instr_mem[0x0004] = 0xFC000000   # HALT (warp 0)
 
-def enc_lw(rd, rs1, imm):
-    return enc_rri('LW', rd, rs1, imm)
+# Warp 1 starts at 0x10
+instr_mem[0x0010] = 0xFC000000   # HALT
 
-def enc_sw(data, base, imm):
-    return ((imm & 0xFFFF) << 16) | (OP['SW']<<12) | (data<<4) | base
+# Warp 2 starts at 0x20
+instr_mem[0x0020] = 0xFC000000   # HALT
 
-def halt():
-    return (OP['HALT']<<12)
+# Warp 3 starts at 0x30
+instr_mem[0x0030] = 0xFC000000   # HALT
 
-prog = []
+# All other locations remain 0x00000000
 
-# ---- Write A matrix (16 words) ----
-prog.append( enc_rri('ADDI',1,0,0) )
-for i in range(16):
-    prog.append( enc_rri('ADDI',2,0,i+1) )
-    prog.append( enc_sw(2,1,i) )
+# Write memfile.hex
+with open("memfile.hex", "w") as f:
+    for word in instr_mem:
+        f.write(f"{word:08X}\n")
+print("Generated memfile.hex")
 
-# ---- Write B matrix (64 words) ----
-prog.append( enc_rri('ADDI',3,0,64) )
-for i in range(64):
-    prog.append( enc_rri('ADDI',4,0,i+1) )
-    prog.append( enc_sw(4,3,i) )
+# Data memory bank 5: 256 words, value at address 0x80 = 0x0000000A
+BANK_DEPTH = 256
+bank5 = [0] * BANK_DEPTH
+bank5[0x80] = 0x0000000A
 
-# ---- Clear C (64 words) ----
-prog.append( enc_rri('ADDI',5,0,128) )
-prog.append( enc_rri('ADDI',6,0,0) )
-for i in range(64):
-    prog.append( enc_sw(6,5,i) )
+with open("bank5.hex", "w") as f:
+    for word in bank5:
+        f.write(f"{word:08X}\n")
+print("Generated bank5.hex")
 
-# ---- Matrix multiply ----
-mm_start = len(prog)
-prog.append( enc_rri('ADDI',2,0,4) )         # r2 = K = 4
-prog.append( enc_rrr('MUL',3,13,2) )         # r3 = i*4
-prog.append( enc_rrr('MUL',4,13,14) )        # r4 = i*16
-prog.append( enc_rri('ADDI',8,0,128) )       # r8 = 128
-prog.append( enc_rrr('ADD',4,4,8) )          # r4 = 128 + i*16
-prog.append( enc_rrr('ADD',4,4,15) )         # r4 = &C[i][j]
-prog.append( enc_rri('ADDI',7,0,64) )        # r7 = 64
-prog.append( enc_rri('ADDI',5,0,0) )         # acc = 0
-prog.append( enc_rri('ADDI',6,0,0) )         # k = 0
-# LOOP START
-loop_pc = len(prog)
-prog.append( enc_rrr('ADD',10,3,6) )         # r10 = &A[i][k]
-prog.append( enc_lw(11,10,0) )               # r11 = A[i][k]
-prog.append( enc_rrr('MUL',12,6,14) )        # r12 = k*16
-prog.append( enc_rrr('ADD',12,12,7) )        # r12 = 64 + k*16
-prog.append( enc_rrr('ADD',12,12,15) )       # r12 = &B[k][j]
-prog.append( enc_lw(1,12,0) )                # r1  = B[k][j]
-prog.append( enc_rrr('MUL',11,11,1) )        # r11 = A*B
-prog.append( enc_rrr('ADD',5,5,11) )         # acc += product
-prog.append( enc_rri('ADDI',6,6,1) )         # k++
-blt_pc = len(prog)
-offset = (loop_pc - blt_pc) & 0xFFFF
-prog.append( ((offset << 16) | (OP['BLT'] << 12) | (2 << 4) | 6) )
-prog.append( enc_sw(5,4,0) )                 # C[i][j] = acc
-prog.append( halt() )
+# Data memory bank 6: 256 words, value at address 0x80 = 0x00000005
+bank6 = [0] * BANK_DEPTH
+bank6[0x80] = 0x00000005
 
-with open('memfile.hex','w') as f:
-    f.write("// self-initialising matmul kernel\n@00\n")
-    for w in prog:
-        f.write(f"{w:08X}\n")
+with open("bank6.hex", "w") as f:
+    for word in bank6:
+        f.write(f"{word:08X}\n")
+print("Generated bank6.hex")
