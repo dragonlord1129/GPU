@@ -14,8 +14,6 @@ module data_memory #(
 );
 
 reg [31:0] data_memory [0:DEPTH-1];
-
-// asynchronous read
 assign RD = data_memory[A];
 
 integer i;
@@ -25,35 +23,10 @@ always @(posedge clk) begin
         data_memory[A] <= writeData;
 end
 
-initial begin
-    for (i = 0; i < DEPTH; i = i + 1)
-        data_memory[i] = 32'b0;
-end
 
 endmodule
 
 
-// ============================================================================
-//  data_memory_line
-// ----------------------------------------------------------------------------
-//  A block / cache-line view built ON TOP of the user's word-wide data_memory,
-//  honouring the WIDENED contract the coalescing memory_scheduler expects:
-//
-//      * a line = LINE_WORDS consecutive words, aligned on LINE_WORDS
-//      * one transaction moves the WHOLE line in a single cycle
-//      * line base address has its low OFFSET_BITS cleared; word k = base + k
-//
-//  Implementation: LINE_WORDS independent banks of the ORIGINAL data_memory.
-//  Bank k stores word k of every line, addressed by the line index
-//  ( = addr_base >> OFFSET_BITS ). Because data_memory reads asynchronously,
-//  all LINE_WORDS words appear combinationally -> the scheduler's 1-cycle
-//  latency contract holds. A per-word store mask drives a per-bank
-//  writeEnable, so only masked words are written and the rest are untouched
-//  (no read-modify-write needed -- words live in separate banks).
-//
-//  The schedulers use 16-bit words; the user's memory is 32 bits wide, so the
-//  low 16 bits of each bank are used.
-// ============================================================================
 module data_memory_line #(
     parameter LINE_WORDS  = 16,
     parameter OFFSET_BITS = 4,

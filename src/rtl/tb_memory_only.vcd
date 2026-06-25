@@ -1,0 +1,903 @@
+$date
+	Thu Jun 25 14:55:15 2026
+$end
+$version
+	Icarus Verilog
+$end
+$timescale
+	1ps
+$end
+$scope module tb_memory_only $end
+$var wire 2 ! warp_id_to_ws [1:0] $end
+$var wire 16 " sw_word_mask [15:0] $end
+$var wire 1 # stall $end
+$var wire 1 $ mem_write $end
+$var wire 1 % mem_done $end
+$var wire 2 & lw_warp_id [1:0] $end
+$var wire 1 ' lw_ready $end
+$var wire 4 ( lw_destination_out [3:0] $end
+$var wire 16 ) addr_out [15:0] $end
+$var reg 16 * active_mask [15:0] $end
+$var reg 1 + clk $end
+$var reg 4 , lw_destination [3:0] $end
+$var reg 1 - mem_req $end
+$var reg 4 . request [3:0] $end
+$var reg 1 / reset $end
+$var reg 2 0 warp_id_from_ws [1:0] $end
+$var integer 32 1 i [31:0] $end
+$scope module DMEM $end
+$var wire 1 + clk $end
+$var wire 16 2 sw_word_mask [15:0] $end
+$var wire 1 $ mem_write $end
+$var wire 8 3 line_index [7:0] $end
+$var wire 16 4 addr_base [15:0] $end
+$var parameter 32 5 INDEX_BITS $end
+$var parameter 32 6 LINE_WORDS $end
+$var parameter 32 7 OFFSET_BITS $end
+$scope begin bank[0] $end
+$var wire 32 8 rd_word [31:0] $end
+$var parameter 2 9 k $end
+$scope module u_bank $end
+$var wire 8 : A [7:0] $end
+$var wire 32 ; RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 < writeData [31:0] $end
+$var wire 1 = writeEnable $end
+$var parameter 32 > ADDR_WIDTH $end
+$var parameter 40 ? DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[1] $end
+$var wire 32 @ rd_word [31:0] $end
+$var parameter 2 A k $end
+$scope module u_bank $end
+$var wire 8 B A [7:0] $end
+$var wire 32 C RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 D writeData [31:0] $end
+$var wire 1 E writeEnable $end
+$var parameter 32 F ADDR_WIDTH $end
+$var parameter 40 G DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[2] $end
+$var wire 32 H rd_word [31:0] $end
+$var parameter 3 I k $end
+$scope module u_bank $end
+$var wire 8 J A [7:0] $end
+$var wire 32 K RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 L writeData [31:0] $end
+$var wire 1 M writeEnable $end
+$var parameter 32 N ADDR_WIDTH $end
+$var parameter 40 O DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[3] $end
+$var wire 32 P rd_word [31:0] $end
+$var parameter 3 Q k $end
+$scope module u_bank $end
+$var wire 8 R A [7:0] $end
+$var wire 32 S RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 T writeData [31:0] $end
+$var wire 1 U writeEnable $end
+$var parameter 32 V ADDR_WIDTH $end
+$var parameter 40 W DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[4] $end
+$var wire 32 X rd_word [31:0] $end
+$var parameter 4 Y k $end
+$scope module u_bank $end
+$var wire 8 Z A [7:0] $end
+$var wire 32 [ RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 \ writeData [31:0] $end
+$var wire 1 ] writeEnable $end
+$var parameter 32 ^ ADDR_WIDTH $end
+$var parameter 40 _ DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[5] $end
+$var wire 32 ` rd_word [31:0] $end
+$var parameter 4 a k $end
+$scope module u_bank $end
+$var wire 8 b A [7:0] $end
+$var wire 32 c RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 d writeData [31:0] $end
+$var wire 1 e writeEnable $end
+$var parameter 32 f ADDR_WIDTH $end
+$var parameter 40 g DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[6] $end
+$var wire 32 h rd_word [31:0] $end
+$var parameter 4 i k $end
+$scope module u_bank $end
+$var wire 8 j A [7:0] $end
+$var wire 32 k RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 l writeData [31:0] $end
+$var wire 1 m writeEnable $end
+$var parameter 32 n ADDR_WIDTH $end
+$var parameter 40 o DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[7] $end
+$var wire 32 p rd_word [31:0] $end
+$var parameter 4 q k $end
+$scope module u_bank $end
+$var wire 8 r A [7:0] $end
+$var wire 32 s RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 t writeData [31:0] $end
+$var wire 1 u writeEnable $end
+$var parameter 32 v ADDR_WIDTH $end
+$var parameter 40 w DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[8] $end
+$var wire 32 x rd_word [31:0] $end
+$var parameter 5 y k $end
+$scope module u_bank $end
+$var wire 8 z A [7:0] $end
+$var wire 32 { RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 | writeData [31:0] $end
+$var wire 1 } writeEnable $end
+$var parameter 32 ~ ADDR_WIDTH $end
+$var parameter 40 !" DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[9] $end
+$var wire 32 "" rd_word [31:0] $end
+$var parameter 5 #" k $end
+$scope module u_bank $end
+$var wire 8 $" A [7:0] $end
+$var wire 32 %" RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 &" writeData [31:0] $end
+$var wire 1 '" writeEnable $end
+$var parameter 32 (" ADDR_WIDTH $end
+$var parameter 40 )" DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[10] $end
+$var wire 32 *" rd_word [31:0] $end
+$var parameter 5 +" k $end
+$scope module u_bank $end
+$var wire 8 ," A [7:0] $end
+$var wire 32 -" RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 ." writeData [31:0] $end
+$var wire 1 /" writeEnable $end
+$var parameter 32 0" ADDR_WIDTH $end
+$var parameter 40 1" DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[11] $end
+$var wire 32 2" rd_word [31:0] $end
+$var parameter 5 3" k $end
+$scope module u_bank $end
+$var wire 8 4" A [7:0] $end
+$var wire 32 5" RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 6" writeData [31:0] $end
+$var wire 1 7" writeEnable $end
+$var parameter 32 8" ADDR_WIDTH $end
+$var parameter 40 9" DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[12] $end
+$var wire 32 :" rd_word [31:0] $end
+$var parameter 5 ;" k $end
+$scope module u_bank $end
+$var wire 8 <" A [7:0] $end
+$var wire 32 =" RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 >" writeData [31:0] $end
+$var wire 1 ?" writeEnable $end
+$var parameter 32 @" ADDR_WIDTH $end
+$var parameter 40 A" DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[13] $end
+$var wire 32 B" rd_word [31:0] $end
+$var parameter 5 C" k $end
+$scope module u_bank $end
+$var wire 8 D" A [7:0] $end
+$var wire 32 E" RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 F" writeData [31:0] $end
+$var wire 1 G" writeEnable $end
+$var parameter 32 H" ADDR_WIDTH $end
+$var parameter 40 I" DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[14] $end
+$var wire 32 J" rd_word [31:0] $end
+$var parameter 5 K" k $end
+$scope module u_bank $end
+$var wire 8 L" A [7:0] $end
+$var wire 32 M" RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 N" writeData [31:0] $end
+$var wire 1 O" writeEnable $end
+$var parameter 32 P" ADDR_WIDTH $end
+$var parameter 40 Q" DEPTH $end
+$upscope $end
+$upscope $end
+$scope begin bank[15] $end
+$var wire 32 R" rd_word [31:0] $end
+$var parameter 5 S" k $end
+$scope module u_bank $end
+$var wire 8 T" A [7:0] $end
+$var wire 32 U" RD [31:0] $end
+$var wire 1 + clk $end
+$var wire 32 V" writeData [31:0] $end
+$var wire 1 W" writeEnable $end
+$var parameter 32 X" ADDR_WIDTH $end
+$var parameter 40 Y" DEPTH $end
+$upscope $end
+$upscope $end
+$upscope $end
+$scope module MS $end
+$var wire 16 Z" active_mask [15:0] $end
+$var wire 1 + clk $end
+$var wire 4 [" lw_destination [3:0] $end
+$var wire 1 - mem_req $end
+$var wire 1 \" occupied_any $end
+$var wire 1 ]" queue_full $end
+$var wire 4 ^" request [3:0] $end
+$var wire 1 / reset $end
+$var wire 1 # stall $end
+$var wire 2 _" warp_id_from_ws [1:0] $end
+$var parameter 3 `" CAPTURE $end
+$var parameter 3 a" DONE $end
+$var parameter 3 b" IDLE $end
+$var parameter 32 c" LINE_WORDS $end
+$var parameter 32 d" OFFSET_BITS $end
+$var parameter 3 e" REQ $end
+$var parameter 3 f" REQ_CHECK $end
+$var parameter 3 g" WAIT $end
+$var parameter 3 h" WARP $end
+$var reg 16 i" addr_out [15:0] $end
+$var reg 16 j" block_members [15:0] $end
+$var reg 16 k" lane_serviced [15:0] $end
+$var reg 4 l" lw_destination_out [3:0] $end
+$var reg 1 ' lw_ready $end
+$var reg 2 m" lw_warp_id [1:0] $end
+$var reg 1 % mem_done $end
+$var reg 1 $ mem_write $end
+$var reg 2 n" queue_pointer [1:0] $end
+$var reg 4 o" req_dst [3:0] $end
+$var reg 16 p" req_mask [15:0] $end
+$var reg 1 q" req_pending $end
+$var reg 4 r" req_type [3:0] $end
+$var reg 2 s" req_warp [1:0] $end
+$var reg 1 t" request_reg $end
+$var reg 3 u" state_curr [2:0] $end
+$var reg 16 v" sw_word_mask [15:0] $end
+$var reg 2 w" warp_id_to_ws [1:0] $end
+$var integer 32 x" i [31:0] $end
+$var integer 32 y" j [31:0] $end
+$scope begin $unm_blk_11 $end
+$var reg 1 z" found $end
+$var integer 32 {" slot [31:0] $end
+$upscope $end
+$scope begin $unm_blk_17 $end
+$var reg 1 |" found_warp $end
+$var integer 32 }" k [31:0] $end
+$upscope $end
+$scope begin $unm_blk_33 $end
+$var integer 32 ~" l [31:0] $end
+$upscope $end
+$scope begin coalesce $end
+$var reg 1 !# found_leader $end
+$var reg 16 "# members [15:0] $end
+$var reg 12 ## target_seg [11:0] $end
+$var reg 16 $# wmask [15:0] $end
+$var integer 32 %# l [31:0] $end
+$var integer 32 &# leader [31:0] $end
+$upscope $end
+$upscope $end
+$scope task issue_request $end
+$var reg 16 '# addr0 [15:0] $end
+$var reg 16 (# data0 [15:0] $end
+$var reg 4 )# req_type [3:0] $end
+$var reg 2 *# warp [1:0] $end
+$upscope $end
+$scope task wait_done $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+$comment Show the parameter values. $end
+$dumpall
+b1 h"
+b100 g"
+b10 f"
+b11 e"
+b100 d"
+b10000 c"
+b0 b"
+b110 a"
+b101 `"
+b100000000 Y"
+b1000 X"
+b1111 S"
+b100000000 Q"
+b1000 P"
+b1110 K"
+b100000000 I"
+b1000 H"
+b1101 C"
+b100000000 A"
+b1000 @"
+b1100 ;"
+b100000000 9"
+b1000 8"
+b1011 3"
+b100000000 1"
+b1000 0"
+b1010 +"
+b100000000 )"
+b1000 ("
+b1001 #"
+b100000000 !"
+b1000 ~
+b1000 y
+b100000000 w
+b1000 v
+b111 q
+b100000000 o
+b1000 n
+b110 i
+b100000000 g
+b1000 f
+b101 a
+b100000000 _
+b1000 ^
+b100 Y
+b100000000 W
+b1000 V
+b11 Q
+b100000000 O
+b1000 N
+b10 I
+b100000000 G
+b1000 F
+b1 A
+b100000000 ?
+b1000 >
+b0 9
+b100 7
+b10000 6
+b1000 5
+$end
+#0
+$dumpvars
+bx *#
+bx )#
+bx (#
+bx '#
+bx &#
+bx %#
+bx $#
+bx ##
+bx "#
+x!#
+bx ~"
+bx }"
+x|"
+bx {"
+xz"
+bx y"
+bx x"
+bx w"
+bx v"
+bx u"
+xt"
+bx s"
+bx r"
+xq"
+bx p"
+bx o"
+bx n"
+bx m"
+bx l"
+bx k"
+bx j"
+bx i"
+b0 _"
+b0 ^"
+x]"
+x\"
+b1 ["
+b1111111111111111 Z"
+xW"
+b0xxxxxxxxxxxxxxxx V"
+bx U"
+bx T"
+bx R"
+xO"
+b0xxxxxxxxxxxxxxxx N"
+bx M"
+bx L"
+bx J"
+xG"
+b0xxxxxxxxxxxxxxxx F"
+bx E"
+bx D"
+bx B"
+x?"
+b0xxxxxxxxxxxxxxxx >"
+bx ="
+bx <"
+bx :"
+x7"
+b0xxxxxxxxxxxxxxxx 6"
+bx 5"
+bx 4"
+bx 2"
+x/"
+b0xxxxxxxxxxxxxxxx ."
+bx -"
+bx ,"
+bx *"
+x'"
+b0xxxxxxxxxxxxxxxx &"
+bx %"
+bx $"
+bx ""
+x}
+b0xxxxxxxxxxxxxxxx |
+bx {
+bx z
+bx x
+xu
+b0xxxxxxxxxxxxxxxx t
+bx s
+bx r
+bx p
+xm
+b0xxxxxxxxxxxxxxxx l
+bx k
+bx j
+bx h
+xe
+b0xxxxxxxxxxxxxxxx d
+bx c
+bx b
+bx `
+x]
+b0xxxxxxxxxxxxxxxx \
+bx [
+bx Z
+bx X
+xU
+b0xxxxxxxxxxxxxxxx T
+bx S
+bx R
+bx P
+xM
+b0xxxxxxxxxxxxxxxx L
+bx K
+bx J
+bx H
+xE
+b0xxxxxxxxxxxxxxxx D
+bx C
+bx B
+bx @
+x=
+b0xxxxxxxxxxxxxxxx <
+bx ;
+bx :
+bx 8
+bx 4
+bx 3
+bx 2
+b10000 1
+b0 0
+1/
+b0 .
+0-
+b1 ,
+0+
+b1111111111111111 *
+bx )
+bx (
+x'
+bx &
+x%
+x$
+x#
+bx "
+bx !
+$end
+#5000
+0#
+0]"
+0\"
+0W"
+0O"
+0G"
+0?"
+07"
+0/"
+0'"
+0}
+0u
+0m
+0e
+0]
+0U
+0M
+0E
+0=
+b1100100 8
+b1100100 ;
+b0 3
+b0 :
+b0 B
+b0 J
+b0 R
+b0 Z
+b0 b
+b0 j
+b0 r
+b0 z
+b0 $"
+b0 ,"
+b0 4"
+b0 <"
+b0 D"
+b0 L"
+b0 T"
+0q"
+b0 V"
+b0 N"
+b0 F"
+b0 >"
+b0 6"
+b0 ."
+b0 &"
+b0 |
+b0 t
+b0 l
+b0 d
+b0 \
+b0 T
+b0 L
+b0 D
+b0 <
+b0 "
+b0 2
+b0 v"
+b0 j"
+b0 k"
+b0 (
+b0 l"
+b0 n"
+b0 !
+b0 w"
+0%
+0'
+b0 &
+b0 m"
+0t"
+0$
+b0 )
+b0 4
+b0 i"
+b0 u"
+b10000 y"
+b100 x"
+1+
+#10000
+0+
+b0 (#
+b0 '#
+b0 *#
+b110 )#
+0/
+#15000
+1#
+b1 o"
+b1111111111111111 p"
+b0 s"
+b110 r"
+1q"
+b10000 x"
+b110 .
+b110 ^"
+1-
+1+
+#20000
+0+
+#25000
+1\"
+0#
+0q"
+b10000 x"
+b100 {"
+1z"
+b0 .
+b0 ^"
+0-
+1+
+#30000
+0+
+#35000
+b1 u"
+1+
+#40000
+0+
+#45000
+b10 u"
+1t"
+b100 }"
+1|"
+1+
+#50000
+0+
+#55000
+b11 u"
+1+
+#60000
+0+
+#65000
+b100 u"
+b1111111111111111 k"
+b1111111111111111 j"
+b0 $#
+b1111111111111111 "#
+b0 ##
+b10000 %#
+b0 &#
+1!#
+1+
+#70000
+0+
+#75000
+b101 u"
+1+
+#80000
+0+
+#85000
+b11 u"
+b10000 ~"
+1+
+#90000
+0+
+#95000
+1'
+b1 (
+b1 l"
+b110 u"
+b10000 %#
+0!#
+1+
+#100000
+0+
+#105000
+0\"
+b0 u"
+1%
+1+
+#110000
+0+
+#115000
+0%
+1+
+#120000
+0+
+#125000
+1+
+#130000
+0+
+#135000
+b101010 (#
+b1000 '#
+b111 )#
+1+
+#140000
+0+
+#145000
+1#
+b111 r"
+1q"
+b10000 x"
+b111 .
+b111 ^"
+1-
+1+
+#150000
+0+
+#155000
+1\"
+0#
+0q"
+b10000 x"
+b100 {"
+1z"
+b0 .
+b0 ^"
+0-
+1+
+#160000
+0+
+#165000
+b1 u"
+b0 k"
+1+
+#170000
+0+
+#175000
+b10 u"
+0t"
+b100 }"
+1|"
+1+
+#180000
+0+
+#185000
+b11 u"
+0'
+1+
+#190000
+0+
+#195000
+1}
+1=
+b100 u"
+b100000001 "
+b100000001 2
+b100000001 v"
+b101010 |
+1$
+b1111111111111111 k"
+b100000001 $#
+b1111111111111111 "#
+1!#
+b10000 %#
+1+
+#200000
+0+
+#205000
+0}
+0=
+b0 8
+b0 ;
+b101010 x
+b101010 {
+b101 u"
+0$
+1+
+#210000
+0+
+#215000
+b11 u"
+1+
+#220000
+0+
+#225000
+b110 u"
+b10000 %#
+0!#
+1+
+#230000
+0+
+#235000
+0\"
+b0 u"
+1%
+1+
+#240000
+0+
+#245000
+0%
+b0 "
+b0 2
+b0 v"
+1+
+#250000
+0+
+#255000
+b0 (#
+b110 )#
+1+
+#260000
+0+
+#265000
+1#
+b110 r"
+1q"
+b10000 x"
+b110 .
+b110 ^"
+1-
+1+
+#270000
+0+
+#275000
+1\"
+0#
+0q"
+b10000 x"
+b100 {"
+1z"
+b0 .
+b0 ^"
+0-
+1+
+#280000
+0+
+#285000
+b1 u"
+b0 k"
+1+
+#290000
+0+
+#295000
+b10 u"
+1t"
+b100 }"
+1|"
+1+
+#300000
+0+
+#305000
+b11 u"
+1+
+#310000
+0+
+#315000
+b100 u"
+b1111111111111111 k"
+b0 $#
+b1111111111111111 "#
+1!#
+b10000 %#
+1+
+#320000
+0+
+#325000
+b101 u"
+1+
+#330000
+0+
+#335000
+b11 u"
+b10000 ~"
+1+
+#340000
+0+
+#345000
+1'
+b110 u"
+b10000 %#
+0!#
+1+
+#350000
+0+
+#355000
+0\"
+b0 u"
+1%
+1+
+#360000
+0+
+#365000
+0%
+1+
+#370000
+0+
+#375000
+1+
+#380000
+0+
+#385000
+1+

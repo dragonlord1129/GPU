@@ -12,6 +12,7 @@ module simt_alu #(
 
 genvar i;
 
+
 generate
     for(i=0;i<LANES;i=i+1)
     begin : ALUS
