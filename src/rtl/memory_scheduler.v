@@ -7,8 +7,8 @@ module memory_scheduler #(
     input  [3:0]      request,
     input  [15:0]     active_mask,
     input  [15:0]     addr_in [0:15],
-    input  [15:0]     sw_out  [0:15],
-    output reg [15:0] lw_out  [0:15],
+    input  [31:0]     sw_out  [0:15],
+    output reg [31:0] lw_out  [0:15],
     output            stall,
     output reg        mem_write,
 
@@ -19,9 +19,9 @@ module memory_scheduler #(
     input  [3:0]      lw_destination,
     output reg [3:0]  lw_destination_out,
 
-    input  [15:0]     lw_line_in  [0:LINE_WORDS-1],
+    input  [31:0]     lw_line_in  [0:LINE_WORDS-1],
     output reg [15:0] addr_out,
-    output reg [15:0] sw_line_out [0:LINE_WORDS-1],
+    output reg [31:0] sw_line_out [0:LINE_WORDS-1],
     output reg [LINE_WORDS-1:0] sw_word_mask,
 
     output reg [1:0]  lw_warp_id,

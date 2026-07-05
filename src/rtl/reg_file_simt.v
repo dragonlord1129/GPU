@@ -26,60 +26,45 @@ module reg_file_simt #(
     integer regid;
 
     //////////////////////////////////////////////////////
-    // Reads
+    // Reads – register 15 is a hardwired lane ID
     //////////////////////////////////////////////////////
-
     genvar i;
-
     generate
         for(i=0;i<LANES;i=i+1) begin : READS
 
             assign rs1_data[i] =
-                (rs1_addr == 0) ?
-                0 :
+                (rs1_addr == 0)    ? 0 :
+                (rs1_addr == 15)   ? i[15:0] :   // lane ID (0..15)
                 REGS[i][rs1_addr];
 
             assign rs2_data[i] =
-                (rs2_addr == 0) ?
-                0 :
+                (rs2_addr == 0)    ? 0 :
+                (rs2_addr == 15)   ? i[15:0] :
                 REGS[i][rs2_addr];
 
         end
     endgenerate
 
     //////////////////////////////////////////////////////
-    // Writes
+    // Writes – register 0 and 15 are never written
     //////////////////////////////////////////////////////
-
     always @(posedge clk) begin
-
         if(reset) begin
-
             for(lane=0; lane<LANES; lane=lane+1)
                 for(regid=0; regid<NUM_REGS; regid=regid+1)
                     REGS[lane][regid] <= 0;
-
         end
         else begin
-
             if(reg_write) begin
-
                 for(lane=0; lane<LANES; lane=lane+1) begin
-
                     if(active_mask[lane]) begin
-
-                        if(rd_addr != 0)
-                            REGS[lane][rd_addr]
-                                <= write_data[lane];
-
+                        if((rd_addr != 0) && (rd_addr != 15)) begin
+                            REGS[lane][rd_addr] <= write_data[lane];
+                        end
                     end
-
                 end
-
-            end
-
+            end 
         end
-
     end
 
 endmodule
