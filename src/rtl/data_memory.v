@@ -1,6 +1,6 @@
 module data_memory #(
     parameter DATA_WIDTH = 32,
-    parameter ADDR_WIDTH = 12              // 4096 words
+    parameter ADDR_WIDTH = 12
 )(
     input                         clk,
     input  [ADDR_WIDTH-1:0]       A,
@@ -8,39 +8,44 @@ module data_memory #(
     input                         writeEnable,
     output [DATA_WIDTH-1:0]       RD
 );
+    localparam DEPTH = (1 << ADDR_WIDTH);
+    reg [DATA_WIDTH-1:0] memory [0:DEPTH-1];
+    assign RD = memory[A];
 
-localparam DEPTH = (1 << ADDR_WIDTH);
+    always @(posedge clk)
+        if (writeEnable) memory[A] <= writeData;
 
-reg [DATA_WIDTH-1:0] memory [0:DEPTH-1];
+    integer init_idx;
+    initial begin
+        // Zero all memory
+        for (init_idx = 0; init_idx < DEPTH; init_idx = init_idx + 1)
+            memory[init_idx] = 0;
 
-assign RD = memory[A];
+        // Matrix A (0..15) = 1..16
+        memory[0]  = 1;   memory[1]  = 2;   memory[2]  = 3;   memory[3]  = 4;
+        memory[4]  = 5;   memory[5]  = 6;   memory[6]  = 7;   memory[7]  = 8;
+        memory[8]  = 9;   memory[9]  = 10;  memory[10] = 11;  memory[11] = 12;
+        memory[12] = 13;  memory[13] = 14;  memory[14] = 15;  memory[15] = 16;
 
-always @(posedge clk)
-begin
-    if(writeEnable)
-        memory[A] <= writeData;
-end
-// ----------------------------------------------------------------
-// Test preload – hardcoded Matrix A and B for matrix‑add test.
-// Remove or comment out for other tests.
-// ----------------------------------------------------------------
-integer init_idx;
-initial begin
-    for (init_idx = 0; init_idx < DEPTH; init_idx = init_idx + 1)
-        memory[init_idx] = 0;
+        // Matrix B (16..31) = ALL ONES
+        memory[16] = 1;   memory[17] = 0;   memory[18] = 0;   memory[19] = 0;
+        memory[20] = 0;   memory[21] = 1;   memory[22] = 0;   memory[23] = 0;
+        memory[24] = 0;   memory[25] = 0;   memory[26] = 1;   memory[27] = 0;
+        memory[28] = 0;   memory[29] = 0;   memory[30] = 0;   memory[31] = 1;
 
-    // Matrix A: addresses 0..15  = 1,2,3,...16
-    memory[0]  = 16'd1;   memory[1]  = 16'd2;   memory[2]  = 16'd3;   memory[3]  = 16'd4;
-    memory[4]  = 16'd5;   memory[5]  = 16'd6;   memory[6]  = 16'd7;   memory[7]  = 16'd8;
-    memory[8]  = 16'd9;   memory[9]  = 16'd10;  memory[10] = 16'd11;  memory[11] = 16'd12;
-    memory[12] = 16'd13;  memory[13] = 16'd14;  memory[14] = 16'd15;  memory[15] = 16'd16;
+        // Row indices (100..115): 0,0,0,0, 1,1,1,1, 2,2,2,2, 3,3,3,3
+        memory[100]=0; memory[101]=0; memory[102]=0; memory[103]=0;
+        memory[104]=1; memory[105]=1; memory[106]=1; memory[107]=1;
+        memory[108]=2; memory[109]=2; memory[110]=2; memory[111]=2;
+        memory[112]=3; memory[113]=3; memory[114]=3; memory[115]=3;
 
-    // Matrix B: addresses 16..31 = 10,20,30,...160
-    memory[16] = 16'd10;  memory[17] = 16'd20;  memory[18] = 16'd30;  memory[19] = 16'd40;
-    memory[20] = 16'd50;  memory[21] = 16'd60;  memory[22] = 16'd70;  memory[23] = 16'd80;
-    memory[24] = 16'd90;  memory[25] = 16'd100; memory[26] = 16'd110; memory[27] = 16'd120;
-    memory[28] = 16'd130; memory[29] = 16'd140; memory[30] = 16'd150; memory[31] = 16'd160;
-end
+        // Column indices (116..131) = 0,1,2,3 repeating
+        for (init_idx = 0; init_idx < 16; init_idx = init_idx + 1)
+            memory[116 + init_idx] = init_idx % 4;
+
+        // Constant 32 at address 200
+        memory[200] = 32;
+    end
 endmodule
 
 

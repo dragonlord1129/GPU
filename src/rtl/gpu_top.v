@@ -211,8 +211,8 @@ module gpu_top (
 
     assign wb_rd_addr     = load_write_pulse ? captured_lw_dest : rd_field;
     assign wb_active_mask = load_write_pulse ? warp_mask_reg[captured_lw_warp_id] : warp_ready_mask;
-    assign wb_reg_write   = load_write_pulse ? 1'b1 : (RegWrite & ~MemRead & ~MemWrite);
-
+    assign wb_reg_write   = load_write_pulse ? 1'b1
+                       : (RegWrite & ~MemRead & ~MemWrite & ~hold);
     //=====================================================================
     // 9. BRANCH / JUMP RESOLUTION
     //=====================================================================

@@ -85,11 +85,13 @@ module warp_scheduler #(
                 WARP_STALL[i]    <= 1'b0;
                 WARP_FINISHED[i] <= 1'b0;
                 WARP_MASK[i]     <= 16'hFFFF;
-                // FIX #2: reset PCs were hardcoded for exactly 4 warps
-                // (WARP_PC[0..3] literals). Generalize to NUMBER_OF_WARPS,
-                // keeping the same per-warp spacing (16 words) the
-                // original constants used (0x00, 0x10, 0x20, 0x30).
-                WARP_PC[i] <= i * 16;
+
+                case (i)
+                    0: WARP_PC[i] <= 16'd0;
+                    1: WARP_PC[i] <= 16'd24;
+                    2: WARP_PC[i] <= 16'd25;
+                    3: WARP_PC[i] <= 16'd26;
+                endcase
             end
 
         end
