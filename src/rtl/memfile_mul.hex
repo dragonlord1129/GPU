@@ -1,32 +1,37 @@
+// program.mem - Warp 0 kernel: Matrix multiplication C = A x B
+// Format: $readmemh hex, one instruction (32-bit) per line.
+// @<addr> sets the load address explicitly; unlisted addresses
+// keep the HALT (A0000000) value pre-filled by instruction_memory's
+// initial loop, so this file only needs to list the real program.
+
 @0000
-64F00064
-65F00074
-6E0000C8
-07440000
-07770000
-68700000
-69700001
-6A700002
-6B700003
-61500010
-62500014
-63500018
-6D50001C
-5C810000
-06C00000
-5C920000
-06C60000
-5CA30000
-06C60000
-5CBD0000
-06C60000
-0C750000
-0DCE0000
-70D60000
-A0000000
-@0010
-A0000000
-@0020
-A0000000
-@0030
-A0000000
+64F00064  // LW R4, 100(R15)    ; r = row
+65F00074  // LW R5, 116(R15)    ; c = col
+6E0000C8  // LW R14, 200(R0)    ; R14 = 32
+07440000  // ADD R7, R4, R4     ; R7 = 2r
+07770000  // ADD R7, R7, R7     ; R7 = 4r
+
+68700000  // LW R8,  0(R7)      ; A[r][0]
+69700001  // LW R9,  1(R7)      ; A[r][1]
+6A700002  // LW R10, 2(R7)      ; A[r][2]
+6B700003  // LW R11, 3(R7)      ; A[r][3]
+
+61500010  // LW R1,  16(R5)     ; B[0][c]
+62500014  // LW R2,  20(R5)     ; B[1][c]
+63500018  // LW R3,  24(R5)     ; B[2][c]
+6D50001C  // LW R13, 28(R5)     ; B[3][c]
+
+5C810000  // MUL R12, R8, R1    ; A[r][0]*B[0][c]
+06C00000  // ADD R6,  R0, R12   ; acc = first product
+5C920000  // MUL R12, R9, R2    ; A[r][1]*B[1][c]
+06C60000  // ADD R6,  R6, R12
+5CA30000  // MUL R12, R10, R3   ; A[r][2]*B[2][c]
+06C60000  // ADD R6,  R6, R12
+5CBD0000  // MUL R12, R11, R13  ; A[r][3]*B[3][c]
+06C60000  // ADD R6,  R6, R12
+
+0C750000  // ADD R12, R7, R5    ; R12 = 4r + c
+0DCE0000  // ADD R13, R12, R14  ; R13 = (4r+c) + 32
+
+70D60000  // SW  R6, 0(R13)     ; C[r][c] = acc
+A0000000  // HALT

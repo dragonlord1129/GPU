@@ -38,7 +38,8 @@ module tb_gpu_matrix_add;
     initial begin
         for (i = 0; i < 16; i = i + 1) begin
             expected_A[i] = i + 1;
-            expected_B[i] = (i + 1) * 10;
+            if(i % 5 == 0) expected_B[i] = 1;
+            else expected_B[i] = 0;
             expected_C[i] = expected_A[i] + expected_B[i];
         end
     end
@@ -118,6 +119,10 @@ module tb_gpu_matrix_add;
         #500000;
         $display("TIMEOUT");
         $finish;
+    end
+    initial begin
+        $dumpfile("tb_matrix_add.vcd");
+        $dumpvars(0, tb_gpu_matrix_add);
     end
 
 endmodule
