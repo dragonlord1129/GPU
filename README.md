@@ -174,7 +174,7 @@ Output
 The multiplication kernel computes
 
 \[
-C = A \times B
+C = A x B
 \]
 
 For the supplied test case, Matrix B is the Identity matrix.
