@@ -201,14 +201,14 @@ Both kernels execute successfully.
 
 | Test | Result |
 |-------|--------|
-| Matrix Addition | ✅ PASS |
-| Matrix Multiplication | ✅ PASS |
+| Matrix Addition | PASS |
+| Matrix Multiplication |  PASS |
 
 ---
 
 # Matrix Addition Waveform
 
-![Matrix Addition Waveform](vcd_waveform_matrix_add.png)
+![Matrix Addition Waveform](./pics/vcd_waveform_matrix_add.png)
 
 The waveform illustrates:
 
@@ -230,7 +230,7 @@ Execution summary
 
 # Matrix Multiplication Waveform
 
-![Matrix Multiplication Waveform](vcd_waveform_matrix_mul.png)
+![Matrix Multiplication Waveform](./pics/vcd_waveform_matrix_mul.png)
 
 The waveform shows:
 
