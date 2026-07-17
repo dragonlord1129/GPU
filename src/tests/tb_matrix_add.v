@@ -121,7 +121,7 @@ module tb_gpu_matrix_add;
         $finish;
     end
     initial begin
-        $dumpfile("tb_matrix_add.vcd");
+        $dumpfile("../waveforms/tb_matrix_add.vcd");
         $dumpvars(0, tb_gpu_matrix_add);
     end
 

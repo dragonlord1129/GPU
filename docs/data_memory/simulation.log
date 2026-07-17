@@ -1,7 +1,0 @@
-===== PARAMETERIZED MEMORY TEST =====
-PASS: addr 5 write/read
-PASS: addr 100 write/read
-PASS: retention check
-PASS: overwrite test
-===== RANDOM TEST DONE =====
-.//tb_data_memory.v:110: $finish called at 170000 (1ps)

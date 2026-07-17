@@ -1,249 +1,101 @@
-# Compatible GPU with RISC-V
+# SIMT GPU Architecture for Parallel Matrix Operations
 
-<div align="center">
+A Verilog implementation of a **SIMT (Single Instruction Multiple Threads) GPU architecture** capable of executing parallel matrix kernels. The design includes a warp scheduler, SIMT ALU, coalesced memory subsystem, register file, and instruction execution pipeline.
 
-### A Custom SIMT GPU Architecture Implemented in Verilog
+The project demonstrates:
 
-Lightweight programmable GPU architecture designed to accelerate data-parallel workloads alongside a RISC-V processor through warp-based SIMT execution.
-
-![Verilog](https://img.shields.io/badge/Language-Verilog-blue)
-![Architecture](https://img.shields.io/badge/Architecture-SIMT-green)
-![ISA](https://img.shields.io/badge/Compatible-RISC--V-orange)
-![Status](https://img.shields.io/badge/Status-Research%20Project-red)
-
-</div>
+- Parallel **Matrix Addition (C = A + B)**
+- Parallel **Matrix Multiplication (C = A × B)**
+- Warp scheduling
+- Memory coalescing
+- SIMT execution
+- Functional verification using VCD waveforms
 
 ---
 
-## Overview
+# Features
 
-Modern processors face a fundamental challenge: balancing efficient sequential execution with high-throughput parallel computation.
-
-While RISC-V CPUs excel at control-heavy workloads, applications such as matrix multiplication, image processing, machine learning inference, and scientific computing benefit significantly from massive parallelism.
-
-This project presents a **custom SIMT (Single Instruction Multiple Threads) GPU architecture** implemented in Verilog that complements a RISC-V processor by accelerating data-parallel workloads.
-
-The design explores:
-
-- Warp-based execution
-- Parallel thread scheduling
-- Memory coalescing
-- Banked memory systems
-- Lightweight GPU microarchitecture
-- Shared CPU-GPU computing models
-
-The long-term goal is to integrate this GPU into a complete **RISC-V SoC platform** capable of heterogeneous computing.
+- 16-lane SIMT execution engine
+- 4 Warp Scheduler
+- Register File per lane
+- SIMT ALU
+- Memory Scheduler with request coalescing
+- Shared Data Memory
+- Instruction Decoder
+- Load/Store support
+- Matrix Addition kernel
+- Matrix Multiplication kernel
+- Complete Verilog testbenches
+- GTKWave compatible VCD generation
 
 ---
 
 # Architecture
 
-## High-Level System
+```mermaid
+flowchart LR
+
+    A[Instruction Memory]
+    B[Instruction Decoder]
+    C[Warp Scheduler]
+    D[SIMT Register File]
+    E[SIMT ALU]
+    F[Memory Scheduler]
+    G[Coalesced Memory Interface]
+    H[Data Memory]
+    I[Writeback MUX]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+    G --> H
+    H --> I
+    I --> D
+```
+
+---
+
+# Overall Data Flow
 
 ```text
-                 ┌─────────────────────┐
-                 │      RISC-V CPU     │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                ┌───────────────────────┐
-                │ Shared Global Memory  │
-                └──────────┬────────────┘
-                           │
-                           ▼
-      ┌────────────────────────────────────────┐
-      │                SIMT GPU                │
-      │                                        │
-      │  Warp Scheduler                        │
-      │        │                               │
-      │        ▼                               │
-      │  Thread Register Files                 │
-      │        │                               │
-      │        ▼                               │
-      │  Parallel ALU Array                    │
-      │        │                               │
-      │        ▼                               │
-      │  Memory Scheduler & Coalescer          │
-      └────────────────────────────────────────┘
-```
-
----
-
-# Key Features
-
-## SIMT Execution Model
-
-The GPU follows a SIMT execution model similar to modern GPU architectures.
-
-Each warp consists of multiple threads executing the same instruction stream while maintaining independent register states.
-
-### Features
-
-- Warp-based scheduling
-- Parallel ALU execution
-- Thread-level register contexts
-- Active lane masking
-- Shared instruction fetch
-
----
-
-## Warp Scheduler
-
-The warp scheduler manages execution across multiple warps.
-
-Responsibilities include:
-
-- Warp dispatch
-- Warp switching
-- Memory stall handling
-- Warp completion tracking
-- Branch redirection support
-
-### Scheduling Strategy
-
-Current implementation:
-
-- Round-robin scheduling
-- Stall-aware warp selection
-- Ready-mask tracking
-
----
-
-## Register File
-
-Each thread maintains its own register state.
-
-Special GPU registers include:
-
-| Register | Description |
-|-----------|------------|
-| R13 | Block Index |
-| R14 | Block Dimension |
-| R15 | Thread Index |
-
-Features:
-
-- Single-cycle reads
-- Synchronous writes
-- Read-after-write forwarding
-- Thread-local storage
-
----
-
-## Arithmetic Logic Unit
-
-The ALU supports:
-
-| Operation | Description |
-|------------|------------|
-| ADD | Addition |
-| SUB | Subtraction |
-| AND | Bitwise AND |
-| OR | Bitwise OR |
-| SLT | Set Less Than |
-| ADDI | Immediate Addition |
-
-The architecture is intentionally lightweight and extensible for future instruction additions.
-
----
-
-## Memory Scheduler
-
-The memory subsystem coordinates requests generated by active warps.
-
-### Responsibilities
-
-- Load/store handling
-- Request queuing
-- Warp request tracking
-- Completion notification
-- Stall management
-
-### Design Goals
-
-- High throughput
-- Low contention
-- Simplified hardware implementation
-
----
-
-## Memory Coalescing
-
-To reduce memory traffic, requests generated by neighboring threads are merged into fewer memory transactions.
-
-Benefits:
-
-- Reduced bandwidth consumption
-- Improved throughput
-- Better scalability
-
-This feature is critical for matrix and vector workloads.
-
----
-
-## Banked Memory Architecture
-
-The GPU memory system uses banked storage to enable parallel access.
-
-```text
-Memory Line
-├── Bank 0
-├── Bank 1
-├── Bank 2
-├── Bank 3
-├── ...
-└── Bank N
-```
-
-Advantages:
-
-- Concurrent thread access
-- Reduced memory conflicts
-- Increased bandwidth utilization
-
----
-
-# Instruction Set
-
-Current GPU ISA supports:
-
-## Arithmetic
-
-```assembly
-ADD
-SUB
-ADDI
-MUL 
-DIV
-```
-
-## Logic
-
-```assembly
-AND
-OR
-```
-
-## Comparison
-
-```assembly
-SLT
-```
-
-## Memory
-
-```assembly
-LW
-SW
-```
-
-## Control Flow
-
-```assembly
-BEQ
-BLT
-JUMP
-HALT
+              +-------------------+
+              | Instruction Memory|
+              +---------+---------+
+                        |
+                        v
+             +----------------------+
+             | Instruction Decoder  |
+             +----------+-----------+
+                        |
+                        v
+              +--------------------+
+              | Warp Scheduler     |
+              +----------+---------+
+                         |
+                         v
+              +--------------------+
+              | Register File      |
+              +----------+---------+
+                         |
+                         v
+                  +--------------+
+                  | SIMT ALU     |
+                  +------+-------+
+                         |
+             +-----------+------------+
+             |                        |
+             |                        |
+             v                        v
+     Write Back                Memory Scheduler
+                                       |
+                                       v
+                            Coalesced Memory Access
+                                       |
+                                       v
+                                 Data Memory
 ```
 
 ---
@@ -251,217 +103,194 @@ HALT
 # Project Structure
 
 ```text
-gpu/
+├── rtl/
+│   ├── gpu_top.v
+│   ├── alu.v
+│   ├── simt_alu.v
+│   ├── warp_scheduler.v
+│   ├── memory_scheduler.v
+│   ├── reg_file_simt.v
+│   ├── instruction_memory.v
+│   ├── data_memory.v
+│   └── ...
 │
-├── gpu_top.v
-├── warp_scheduler.v
-├── memory_scheduler.v
-├── instruction_memory.v
-├── data_memory.v
-├── reg_file.v
-├── alu.v
-│
-├── testbench/
+├── tests/
+│   ├── tb_matrix_add.v
 │   ├── tb_matrix_mul.v
-│   ├── tb_stress.v
-│   └── tb_memory.v
 │
 ├── programs/
+│   ├── matrix_add.mem
 │   ├── matrix_mul.mem
-│   └── vector_add.mem
 │
-└── docs/
+├── waves/
+│   ├── tb_matrix_add.vcd
+│   ├── tb_matrix_mul.vcd
+│
+└── README.md
 ```
 
 ---
 
-# Verification
+# Matrix Addition
 
-## Matrix Multiplication Benchmark
+The addition kernel computes
 
-The primary validation workload is matrix multiplication.
+\[
+C = A + B
+\]
 
-### Objectives
+where every lane computes one matrix element.
 
-Verify:
+Example input matrices:
 
-- Arithmetic correctness
-- Warp scheduling
-- Memory subsystem behavior
-- Thread execution
-- Memory coalescing
+### Matrix A
 
-### Test Configuration
+|1|2|3|4|
+|-|-|-|-|
+|5|6|7|8|
+|9|10|11|12|
+|13|14|15|16|
 
-```text
-A : 4 × 4
-B : 4 × 16
-C : A × B
-```
+### Matrix B
 
-The benchmark executes hundreds of multiply-accumulate operations across multiple threads and validates the final output against a software reference model.
+|1|0|0|0|
+|-|-|-|-|
+|0|1|0|0|
+|0|0|1|0|
+|0|0|0|1|
 
----
+Output
 
-## Additional Testbenches
-
-### Warp Scheduler Tests
-
-- Warp switching
-- Warp completion
-- Scheduler fairness
-
-### Memory Tests
-
-- Concurrent requests
-- Queue overflow
-- Memory stalls
-
-### Stress Tests
-
-- High warp occupancy
-- Continuous memory traffic
-- Deadlock detection
+|2|2|3|4|
+|-|-|-|-|
+|5|7|7|8|
+|9|10|12|12|
+|13|14|15|17|
 
 ---
 
-# Simulation
+# Matrix Multiplication
 
-## Using Icarus Verilog
+The multiplication kernel computes
 
-Compile:
+\[
+C = A \times B
+\]
 
-```bash
-iverilog \
-gpu_top.v \
-warp_scheduler.v \
-memory_scheduler.v \
-instruction_memory.v \
-data_memory.v \
-reg_file.v \
-alu.v \
-testbench/tb_stress.v \
--o gpu_sim
+For the supplied test case, Matrix B is the Identity matrix.
+
+Therefore
+
+\[
+C = A
+\]
+
+Output
+
+|1|2|3|4|
+|-|-|-|-|
+|5|6|7|8|
+|9|10|11|12|
+|13|14|15|16|
+
+---
+
+# Simulation Results
+
+Both kernels execute successfully.
+
+| Test | Result |
+|-------|--------|
+| Matrix Addition | ✅ PASS |
+| Matrix Multiplication | ✅ PASS |
+
+---
+
+# Matrix Addition Waveform
+
+![Matrix Addition Waveform](vcd_waveform_matrix_add.png)
+
+The waveform illustrates:
+
+- Reset release
+- Warp execution
+- Load instructions
+- ALU ADD operation
+- Coalesced Store
+- Kernel completion
+
+Execution summary
+
+| Metric | Value |
+|---------|------:|
+| Clock Cycles | 42 |
+| Runtime | 425 ns |
+
+---
+
+# Matrix Multiplication Waveform
+
+![Matrix Multiplication Waveform](vcd_waveform_matrix_mul.png)
+
+The waveform shows:
+
+- Multiple memory loads
+- Multiply operations
+- Accumulation
+- Coalesced memory store
+- Kernel completion
+
+Execution summary
+
+| Metric | Value |
+|---------|------:|
+| Clock Cycles | 247 |
+| Runtime | 2475 ns |
+
+---
+
+# Memory Coalescing
+
+The memory scheduler combines requests from multiple SIMD lanes accessing the same cache line into a single memory transaction.
+
+Benefits include:
+
+- Reduced memory traffic
+- Improved bandwidth utilization
+- Lower execution latency
+- Higher throughput
+
+---
+
+# Test Output
+
+Matrix Addition
+
+```
+=== Matrix Addition : PASS ===
 ```
 
-Run:
+Matrix Multiplication
 
-```bash
-vvp gpu_sim
 ```
-
-Generate Waveforms:
-
-```bash
-gtkwave dump.vcd
+=== Matrix Multiplication : PASS ===
 ```
 
 ---
 
-# Design Challenges
+# Future Improvements
 
-This project explores several GPU-specific hardware challenges:
-
-- Warp scheduling
-- Thread synchronization
-- Memory latency hiding
-- Memory coalescing
-- Bank conflicts
-- Divergent control flow
-
-The implementation prioritizes architectural clarity and educational value while remaining synthesizable.
-
----
-
-# Roadmap
-
-## Near-Term Goals
-
-- CPU → GPU kernel dispatch
-- Shared memory model
-- Synchronization primitives
-- Improved branch handling
-- Enhanced instruction set
-
-## Future Work
-
-- RISC-V SoC integration
-- FPGA deployment
-- DMA engine
+- Branch divergence handling
 - Cache hierarchy
-- Vector extensions
-- Tensor computation units
-- OpenCL-inspired runtime
-- Multi-SM architecture
-
----
-
-# Applications
-
-Potential workloads include:
-
-- Matrix multiplication
-- Vector arithmetic
-- Image processing
-- Signal processing
-- Scientific computing
-- Machine learning inference
-- Parallel numerical algorithms
-
----
-
-# Research Motivation
-
-This project investigates how a lightweight GPU can be integrated with a RISC-V ecosystem to provide:
-
-- Better performance-per-watt
-- Higher parallel throughput
-- Open-source hardware experimentation
-- FPGA-friendly GPU development
-
-The architecture serves as a foundation for future research into heterogeneous CPU-GPU computing systems.
-
----
-
-# Technologies
-
-- Verilog HDL
-- RISC-V Concepts
-- SIMT Execution
-- FPGA-Oriented Design
-- Hardware Verification
-- Digital System Design
-
----
-
-# Future Vision
-
-```text
-                RISC-V SoC
-                      │
-     ┌────────────────┴────────────────┐
-     │                                 │
-     ▼                                 ▼
- Control Processing          Parallel Processing
-     CPU                            GPU
-     │                               │
-     └──────── Shared Memory ────────┘
-```
-
-A fully open-source heterogeneous computing platform built entirely around the RISC-V ecosystem.
+- Shared memory
+- Pipelined execution
+- Floating-point ALU
+- Tensor core instructions
+- Multiple Streaming Multiprocessors (SMs)
 
 ---
 
 # Author
+Bibhav Jha
 
-**Bibhav Jha**
-
-Computer Engineering Research Project
-
-Exploring GPU microarchitecture, SIMT execution, and heterogeneous RISC-V computing through synthesizable Verilog implementations.
-
----
-
-## License
-
-Feel free to use, modify, and extend this project for educational and research purposes.
+Designed for parallel matrix computation, warp scheduling, and memory coalescing demonstrations.

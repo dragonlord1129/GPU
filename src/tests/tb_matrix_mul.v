@@ -107,7 +107,7 @@ module tb_mul_visual_final;
 
     initial begin #2000000; $display("TIMEOUT"); $finish; end
     initial begin
-        $dumpfile("tb_matrix_mul.vcd");
+        $dumpfile("../waveforms/tb_matrix_mul.vcd");
         $dumpvars(0, tb_mul_visual_final);
     end
 
