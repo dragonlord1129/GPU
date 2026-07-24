@@ -1,0 +1,15 @@
+// Parallel element‑wise addition (uses R15 = lane ID)
+@0000
+61F00000    // LW   R1, 0(R15)        ; R1 = mem[0  + lane] = A[lane]
+62F00010    // LW   R2, 16(R15)       ; R2 = mem[16 + lane] = B[lane]
+03120000    // ADD  R3, R1, R2        ; R3 = A[lane] + B[lane]
+70F30020    // SW   R3, 32(R15)       ; mem[32 + lane] = R3 = C[lane]
+A0000000    // HALT                  ; warp 0 done
+
+// Warps 1‑3 immediate halt
+@0010
+A0000000
+@0020
+A0000000
+@0030
+A0000000

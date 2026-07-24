@@ -68,7 +68,7 @@ module gpu_top (
     assign halt_d = Halt;
 
     //=====================================================================
-    // 3. IMMEDIATE & REGISTER FILE
+    // 3. IMMEDIATE & REGISTER FILE (DUAL WRITE PORT)
     //=====================================================================
     wire [15:0] imm_out;
     imm_gen #(.DATA_WIDTH(16)) u_imm_gen (.imm(imm_field), .imm_out(imm_out));
@@ -79,10 +79,26 @@ module gpu_top (
     wire        wb_reg_write;
     wire [15:0] wbmux_out [0:15];
 
-    reg_file_simt #(.DATA_WIDTH(16), .NUM_REGS(16), .LANES(16)) u_regfile (
+    // Which warp is reading the register file right now?
+    wire [1:0] read_warp_id = current_warp_id;
+    // ALU write port always writes to the current warp (loads use second port)
+    wire [1:0] write_warp_id = current_warp_id;
+
+    reg_file_simt #(
+        .DATA_WIDTH(16), .NUM_REGS(16), .LANES(16), .NUMBER_OF_WARPS(4)
+    ) u_regfile (
         .clk(clk), .reset(rst),
         .rs1_addr(rs1_field), .rs2_addr(rs2_field), .rd_addr(wb_rd_addr),
+        .read_warp_id(read_warp_id), .write_warp_id(write_warp_id),
         .active_mask(wb_active_mask), .write_data(wbmux_out), .reg_write(wb_reg_write),
+
+        // ---- Second write port for load writeback ----
+        .wb2_rd_addr     (captured_lw_dest),
+        .wb2_warp_id     (captured_lw_warp_id),
+        .wb2_active_mask (warp_mask_reg[captured_lw_warp_id]),
+        .wb2_write_data  (captured_lw_data),
+        .wb2_reg_write   (load_write_pulse),
+
         .rs1_data(rs1_data), .rs2_data(rs2_data)
     );
 
@@ -119,7 +135,7 @@ module gpu_top (
     end endgenerate
 
     wire [31:0] lw_out [0:15];
-    wire [3:0]  lw_destination_out;  // still from scheduler, but we'll ignore it
+    wire [3:0]  lw_destination_out;
     wire [WARP_BITS-1:0] lw_warp_id;
     wire        lw_ready;
 
@@ -174,7 +190,7 @@ module gpu_top (
     always @(posedge clk) if (mem_req_pulse) warp_mask_reg[warp_id_to_ms] <= warp_ready_mask;
 
     //=====================================================================
-    // 7. LOAD COMPLETION CAPTURE (uses mem_is_load, mem_dest)
+    // 7. LOAD COMPLETION CAPTURE (feeds the second write port)
     //=====================================================================
     reg [15:0] captured_lw_data [0:15];
     reg [3:0]  captured_lw_dest;
@@ -198,21 +214,17 @@ module gpu_top (
     end
 
     //=====================================================================
-    // 8. WRITE‑BACK MUX
+    // 8. WRITE‑BACK (ALU port only – loads use the second register port)
     //=====================================================================
+    // ALU write data is always alu_result (no load muxing)
     generate for (i=0;i<16;i=i+1) begin : gen_wb_mux
-        writeback_mux u_wb_mux (
-            .alu_result(alu_result[i]),
-            .mem_result(captured_lw_data[i]),
-            .MemRead(load_write_pulse),
-            .wb_data(wbmux_out[i])
-        );
+        assign wbmux_out[i] = alu_result[i];
     end endgenerate
 
-    assign wb_rd_addr     = load_write_pulse ? captured_lw_dest : rd_field;
-    assign wb_active_mask = load_write_pulse ? warp_mask_reg[captured_lw_warp_id] : warp_ready_mask;
-    assign wb_reg_write   = load_write_pulse ? 1'b1
-                       : (RegWrite & ~MemRead & ~MemWrite & ~hold);
+    assign wb_rd_addr     = rd_field;
+    assign wb_active_mask = warp_ready_mask;
+    assign wb_reg_write   = RegWrite & ~MemRead & ~MemWrite & ~hold;
+
     //=====================================================================
     // 9. BRANCH / JUMP RESOLUTION
     //=====================================================================
