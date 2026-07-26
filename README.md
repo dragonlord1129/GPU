@@ -35,29 +35,8 @@ The project demonstrates:
 
 ## Architecture
 
-```mermaid
-flowchart LR
+![Architecture](./pics/gpu_top_block_diagram.png)
 
-    A[Instruction Memory]
-    B[Instruction Decoder]
-    C[Warp Scheduler]
-    D[SIMT Register File]
-    E[SIMT ALU]
-    F[Memory Scheduler]
-    G[Coalesced Memory Interface]
-    H[Data Memory]
-    I[Writeback MUX]
-
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    E --> F
-    F --> G
-    G --> H
-    H --> I
-    I --> D
-```
 
 ---
 
