@@ -524,12 +524,13 @@ The `memory_scheduler` combines accesses from multiple SIMT lanes that fall with
 
 ```bash
 # Matrix Addition
-iverilog -o sim_add -g2005 rtl/*.v tests/tb_matrix_add.v
-vvp sim_add
+./script.sh -o add
 
 # Matrix Multiplication
-iverilog -o sim_mul -g2005 rtl/*.v tests/tb_matrix_mul.v
-vvp sim_mul
+./script.sh -o mul
+
+# Matrix Dot Product
+./script.sh -o dot
 ```
 
 ### View Waveforms

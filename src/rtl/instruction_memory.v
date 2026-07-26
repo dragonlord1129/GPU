@@ -1,5 +1,5 @@
 module instruction_memory #(
-    parameter MEMFILE = "../programs/memfile_dot.hex"   // path to hex memory image
+    parameter MEMFILE = "../programs/memfile_mul.hex"   // path to hex memory image
 )(
     input  [15:0] A,
     output [31:0] RD
