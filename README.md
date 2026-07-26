@@ -434,6 +434,10 @@ Round-robin scheduling is visible in the `current_warp_id` trace: W0 → W1 → 
 | Coalescing Ratio | 16:1 (16 lanes per transaction) |
 | ALU Cycles | 1 (single parallel ADD) |
 
+Dot product is also similar 
+![Matrix Dot Product Waveform](./pics/vcd_waveform_matrix_dot.png)
+
+
 ---
 
 ## Waveform Analysis — Matrix Multiplication
