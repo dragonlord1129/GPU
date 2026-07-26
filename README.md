@@ -798,5 +798,6 @@ Addition and dot-product achieve **16:1 coalescing** on every load and store (3 
 ## Author
 
 **Bibhav Jha**
+**Saurab Poudel**
 
 Designed for parallel matrix computation, warp scheduling, and memory coalescing demonstrations.
