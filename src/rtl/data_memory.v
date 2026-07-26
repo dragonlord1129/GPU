@@ -16,6 +16,7 @@ module data_memory #(
         if (writeEnable) memory[A] <= writeData;
 
     integer init_idx;
+            integer warp, lane, i;
     initial begin
         for (init_idx = 0; init_idx < DEPTH; init_idx = init_idx + 1)
             memory[init_idx] = 0;
@@ -50,10 +51,6 @@ module data_memory #(
             memory[16'h41A] = 16'h0E00;  memory[16'h41B] = 16'h0F00;
             memory[16'h41C] = 16'd0;     memory[16'h41D] = 16'd16;
             memory[16'h41E] = 16'd32;    memory[16'h41F] = 16'd48;
-        // memory[0] = 5;
-        // memory[1] = 7;
-        // memory[2] = 0;        // store target
-        // memory[4095] = 0; // dummy slow load target
     end
 endmodule
 

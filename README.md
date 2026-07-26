@@ -117,19 +117,23 @@ flowchart LR
 │   ├── instruction_decoder.v  # Fixed-width instruction decode
 │   ├── main_decoder.v         # Control-signal generation
 │   ├── imm_gen.v              # Zero-extend 16-bit immediate
-│   └── writeback_mux.v        # ALU vs. load-data selection
+│   ├── writeback_mux.v        # ALU vs. load-data selection
+|   └── script.sh 
 │
 ├── tests/
 │   ├── tb_matrix_add.v        # Matrix addition testbench
 │   ├── tb_matrix_mul.v        # Matrix multiplication testbench
+|   ├── tb_matrix_dot.v        # Matrix dot product testbench
 │
 ├── programs/
 │   ├── matrix_add.mem         # Assembled addition kernel
 │   ├── matrix_mul.mem         # Assembled multiplication kernel
+|   ├── matrix_dot.hex         # Assembled dot product kernel
 │
 ├── waves/
 │   ├── tb_matrix_add.vcd      # Addition simulation trace
-│   └── tb_matrix_mul.vcd      # Multiplication simulation trace
+│   ├── tb_matrix_mul.vcd      # Multiplication simulation trace
+|   └── tb_matrix_dot.vcd      # Dot product simulation trace 
 │
 └── README.md
 ```
@@ -168,9 +172,9 @@ Warp initial PCs (set in `initial` block):
 | Warp | Start PC |
 |------|----------|
 | 0 | 0 |
-| 1 | 24 |
-| 2 | 25 |
-| 3 | 26 |
+| 1 | 64 |
+| 2 | 128 |
+| 3 | 192 |
 
 On `mem_req`, the warp's PC is **immediately advanced by 1** before the warp is stalled. This ensures the warp resumes at the correct instruction after memory completes, avoiding the re-issue bug.
 
@@ -201,9 +205,6 @@ Supports:
 
 Flags produced: `zero`, `carry`, `negative`, `overflow`, `divide_by_zero`.
 
-**Booth Multiplier** (`booth_multiplier.v`): Radix-2 signed Booth encoding, fully combinational, produces a 2×N-bit product. The ALU exposes the low and high halves separately via two opcodes.
-
-**Non-Restoring Divider** (`non_restoring_divider_comb.v`): Fully combinational, signed mode controlled by `signed_mode`. Sets `divide_by_zero` when the divisor is zero.
 
 ### `simt_alu.v` — 16-Lane ALU Array
 
