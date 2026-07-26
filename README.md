@@ -5,8 +5,9 @@ A Verilog implementation of a **SIMT (Single Instruction Multiple Threads) GPU a
 The project demonstrates:
 
 - Parallel **Matrix Addition (C = A + B)**
+- Parallel **Matrix Dot Product / elementwise multiply (C = A ⊙ B)**
 - Parallel **Matrix Multiplication (C = A × B)**
-- Round-robin warp scheduling with stall detection
+- Round-robin warp scheduling with stall detection and multi-warp latency hiding
 - Memory coalescing across 16 SIMT lanes
 - SIMT execution with per-lane register files
 - Functional verification using VCD waveforms
@@ -25,6 +26,7 @@ The project demonstrates:
 - Load/Store with automatic memory stall/resume
 - Branch (BEQ) and unconditional Jump support
 - Matrix Addition kernel
+- Matrix Dot Product (elementwise multiply) kernel
 - Matrix Multiplication kernel
 - Complete Verilog testbenches with pass/fail checking
 - GTKWave-compatible VCD generation
@@ -324,9 +326,20 @@ where every lane computes one matrix element in parallel — all 16 elements com
 | 9 | 10 | 12 | 12 |
 | 13 | 14 | 15 | 17 |
 
+### Instruction Trace (decoded from `instr[31:0]`)
+
+Every lane runs the exact same four instructions — only the per-lane address (`R15` = lane ID) and per-lane data differ:
+
+| Time | Instruction | Meaning |
+|------|-------------|---------|
+| 5 ns | `LW  R1, R15, 0`  | each lane loads `A[lane_id]` (addr 0–15) — one coalesced 16-word burst |
+| 155 ns | `LW  R2, R15, 16` | each lane loads `B[lane_id]` (addr 16–31) — one coalesced 16-word burst |
+| 165 ns | `ADD R3, R1, R2` | 16-lane parallel element-wise add |
+| 285 ns | `SW  R3, R15, 32` | each lane stores its result to `C[lane_id]` (addr 32–47) — one coalesced 16-word burst |
+
 ### Kernel Execution Trace
 
-The warp scheduler issues Warp 0 first. Warps 1–3 start at PC 24–26 (HALT instructions — placeholder warps) and finish immediately, leaving Warp 0 as the sole active warp.
+The warp scheduler issues Warp 0 first. Warps 1–3 execute a single `HALT` (placeholder warps at PCs 64/128/192) and retire almost immediately, leaving Warp 0 as the sole warp doing real work.
 
 | Phase | Opcode | Description |
 |-------|--------|-------------|
@@ -335,6 +348,82 @@ The warp scheduler issues Warp 0 first. Warps 1–3 start at PC 24–26 (HALT in
 | 3 | ADD | 16-lane parallel element-wise add |
 | 4 | SW | Store all 16 results to Matrix C base address 32 |
 | 5 | HALT | Mark Warp 0 complete; `done` asserted |
+
+---
+
+## Matrix Dot Product (Elementwise Multiply)
+
+`tb_matrix_dot` runs the **identical instruction stream as Matrix Addition**, with a single field changed: the ALU op is `MUL` instead of `ADD`. The result is a 16-lane parallel **elementwise (Hadamard) product**, C = A ⊙ B, rather than a reduction-style dot product:
+
+$$C[i][j] = A[i][j] \times B[i][j]$$
+
+Because the test's **B** matrix is the 4×4 identity, every off-diagonal entry of B is `0`, so the elementwise product zeroes out everything except the diagonal of A — which is exactly what the simulation prints. This makes the kernel a clean, minimal-cycle way to exercise the MUL datapath (Booth multiplier) end-to-end without the multi-iteration accumulation loop that full matrix multiplication requires.
+
+### Input Matrices
+
+**Matrix A** (addresses 0–15):
+
+| 1 | 2 | 3 | 4 |
+|---|---|---|---|
+| 5 | 6 | 7 | 8 |
+| 9 | 10 | 11 | 12 |
+| 13 | 14 | 15 | 16 |
+
+**Matrix B** (addresses 16–31, identity matrix):
+
+| 1 | 0 | 0 | 0 |
+|---|---|---|---|
+| 0 | 1 | 0 | 0 |
+| 0 | 0 | 1 | 0 |
+| 0 | 0 | 0 | 1 |
+
+### Output Matrix C = A ⊙ B (addresses 32–47):
+
+| 1 | 0 | 0 | 0 |
+|---|---|---|---|
+| 0 | 6 | 0 | 0 |
+| 0 | 0 | 11 | 0 |
+| 0 | 0 | 0 | 16 |
+
+### Instruction Trace (decoded from `instr[31:0]`)
+
+| Time | Instruction | Meaning |
+|------|-------------|---------|
+| 5 ns | `LW  R1, R15, 0`  | each lane loads `A[lane_id]` — one coalesced burst |
+| 155 ns | `LW  R2, R15, 16` | each lane loads `B[lane_id]` — one coalesced burst |
+| 165 ns | `MUL R3, R1, R2` | 16-lane parallel elementwise multiply (Booth) |
+| 285 ns | `SW  R3, R15, 32` | each lane stores its result — one coalesced burst |
+
+### Kernel Execution Trace
+
+| Phase | Opcode | Description |
+|-------|--------|-------------|
+| 1 | LW | Load all 16 elements of Matrix A |
+| 2 | LW | Load all 16 elements of Matrix B |
+| 3 | MUL | 16-lane parallel elementwise multiply |
+| 4 | SW | Store all 16 results (only the 4 diagonal lanes are non-zero) |
+| 5 | HALT | Mark Warp 0 complete; `done` asserted |
+
+Because the instruction stream, memory-access pattern, and warp-scheduling behavior are identical to Matrix Addition (only the `ALUControl` value differs), the timing trace is bit-for-bit identical to the addition kernel: **42 clock cycles, 425 ns runtime.**
+
+### Warp Execution Summary
+
+```
+W0: LW (A) → stall/resume → LW (B) → stall/resume → MUL → SW → stall/resume → HALT
+W1: HALT  (placeholder)
+W2: HALT  (placeholder)
+W3: HALT  (placeholder)
+```
+
+### Execution Metrics
+
+| Metric | Value |
+|--------|------:|
+| Clock Cycles | 42 |
+| Runtime | 425 ns |
+| Memory Transactions | 3 (2 LW + 1 SW) |
+| Coalescing Ratio | 16:1 (16 lanes per transaction) |
+| ALU Cycles | 1 (single parallel MUL) |
 
 ---
 
@@ -367,7 +456,7 @@ for k in 0..3:
 C[i][j] = accumulator
 ```
 
-This inner loop requires repeated LW → MUL → ADD cycles, which accounts for the significantly higher cycle count compared to addition.
+This inner loop requires repeated LW → MUL → ADD cycles, which accounts for the significantly higher cycle count compared to addition. Unlike the addition/dot-product kernels, **all four warps do real work here** — the scheduler round-robins continuously between Warp 0 and Warp 1 (and, later in the run, Warp 2 and Warp 3) for the full length of the simulation, overlapping each warp's multiply/memory latency with another warp's progress instead of leaving three warps idle.
 
 | Phase | Opcode(s) | Description |
 |-------|-----------|-------------|
@@ -376,19 +465,20 @@ This inner loop requires repeated LW → MUL → ADD cycles, which accounts for 
 | 3 | MUL | 16-lane parallel multiply (Booth) |
 | 4 | ADD | Accumulate into result register |
 | 5 | BEQ/JUMP | Loop back for next k; exit when k == 4 |
-| 6 | SW | Store accumulated results to Matrix C |
+| 6 | SW | Store accumulated result for that output element |
 | 7 | HALT | Warp complete |
 
 ---
 
 ## Simulation Results
 
-Both kernels execute correctly and produce matching output.
+All three kernels execute correctly and produce matching output.
 
 | Test | Clock Cycles | Runtime | Result |
 |------|:---:|:---:|:---:|
 | Matrix Addition | 42 | 425 ns | **PASS** |
-| Matrix Multiplication | 247 | 2475 ns | **PASS** |
+| Matrix Dot Product (elementwise) | 42 | 425 ns | **PASS** |
+| Matrix Multiplication | 843 | 8435 ns | **PASS** |
 
 ---
 
@@ -404,14 +494,15 @@ Both kernels execute correctly and produce matching output.
 |------|-------|-----------|
 | 0 ns | Simulation start; reset asserted | `rst = 1` |
 | 35 ns | Reset released | `rst = 0` |
-| ~35 ns | Warp 0 scheduled; first LW issued | `current_warp_id = W0`, `opcode = LW` |
-| ~45–106 ns | W1, W2, W3 each execute their HALT | `opcode = HALT` for placeholder warps |
-| ~106–159 ns | Warp 0 resumes; second LW (Matrix B) | `opcode = LW`, `mem_req_pulse` rises |
-| ~212 ns | ADD instruction | `opcode = ADD`; 16 ALUs add in parallel |
-| ~265–318 ns | SW instruction; memory scheduler builds coalesced write | `opcode = SW`, `mem_req_pulse` |
+| 5 ns | Warp 0 scheduled; first LW issued | `current_warp_id = W0`, `opcode = LW` |
+| 55–95 ns | W1, W2, W3 each execute their HALT | `opcode = HALT` for placeholder warps |
+| 155 ns | Warp 0 resumes; second LW (Matrix B) | `opcode = LW`, `mem_req_pulse` rises |
+| 165 ns | ADD instruction dispatched | `opcode = ADD`; 16 ALUs add in parallel |
+| 285 ns | SW request issued | `opcode = SW`, `mem_req_pulse` rises |
 | 345 ns | Coalesced store fires: 16 lanes → **1 memory transaction** | `ms_mem_write = 1`, `addr = 32` |
-| ~370 ns | Warp 0 executes HALT | `opcode = HALT` |
+| 405 ns | Warp 0 executes HALT | `opcode = HALT` |
 | 415 ns | `done` asserted; kernel complete | `done = 1` |
+| 425 ns | `$finish` | — |
 
 ### Warp Execution Summary
 
@@ -434,9 +525,9 @@ Round-robin scheduling is visible in the `current_warp_id` trace: W0 → W1 → 
 | Coalescing Ratio | 16:1 (16 lanes per transaction) |
 | ALU Cycles | 1 (single parallel ADD) |
 
-Dot product is also similar 
-![Matrix Dot Product Waveform](./pics/vcd_waveform_matrix_dot.png)
+The Matrix Dot Product waveform (`tb_matrix_dot.vcd`) is bit-for-bit identical in timing to this trace — see the [Matrix Dot Product](#matrix-dot-product-elementwise-multiply) section above for its own waveform and instruction decode.
 
+![Matrix Dot Product Waveform](./pics/vcd_waveform_matrix_dot.png)
 
 ---
 
@@ -452,28 +543,29 @@ Dot product is also similar
 |------|-------|-----------|
 | 0 ns | Simulation start; reset asserted | `rst = 1` |
 | 35 ns | Reset released | `rst = 0` |
-| ~35 ns | W0 and W3 scheduled; initial LW and HALT | `opcode = LW / HALT` |
-| ~35–2395 ns | Repeated LW → MUL → ADD cycles across 4 accumulation steps | `mem_req_pulse` fires ~24 times |
-| ~1236 ns | Mid-kernel LW (inner loop continuation) | `opcode = LW`, `current_warp_id = W0` |
-| ~2350–2395 ns | MUL instructions; final ADD accumulation | `opcode = MUL / ADD` |
-| 2395 ns | Coalesced store: 16 lanes → **1 memory write** to addr 32 | `ms_mem_write = 1` |
-| ~2450 ns | HALT | `opcode = HALT` |
-| 2465 ns | `done` asserted | `done = 1` |
+| 5–95 ns | Warps 0, 1, 2, 3 all scheduled in for the first time | `current_warp_id` cycles 0→1→2→3 |
+| 5 ns – 8355 ns | Continuous round-robin between warps, each running its own LW → LW → MUL → ADD → BEQ inner loop | `current_warp_id` toggles ~96 times; `mem_req_pulse` fires 98 times |
+| 1455–8355 ns | 16 separate coalesced store bursts, one every few hundred ns as each output element's accumulation finishes | `ms_mem_write = 1` (×16) |
+| ~8415 ns | Final HALT | `opcode = HALT` |
+| 8425 ns | `done` asserted | `done = 1` |
+| 8435 ns | `$finish` | — |
 
 ### `mem_req_pulse` Activity
 
-The multiplication waveform shows approximately **24 `mem_req_pulse` assertions** across the full simulation. Each pulse corresponds to one warp stalling for a memory operation. The memory scheduler services them sequentially, with coalescing collapsing all 16-lane accesses into single-transaction bursts.
+The multiplication waveform shows **98 `mem_req_pulse` assertions** across the full simulation (measured directly from the VCD: 82 loads + 16 stores). Each pulse corresponds to one warp issuing a memory operation and stalling until the memory scheduler completes it. Unlike addition/dot-product — where all 16 lanes' results land in a single coalesced store — multiplication's output elements finish their accumulation at different times, so the **16 output elements are written back in 16 separate coalesced store bursts** rather than one combined transaction.
 
 ### Execution Metrics
 
 | Metric | Value |
 |--------|------:|
-| Clock Cycles | 247 |
-| Runtime | 2475 ns |
-| Multiply Cycles | 4 per output element (inner loop k = 0–3) |
-| Memory Transactions | ~24 (8 LW rounds × 3 loads each + 1 SW) |
+| Clock Cycles | 843 |
+| Runtime | 8435 ns |
+| Memory Requests (`mem_req_pulse`) | 98 (82 loads + 16 stores) |
+| Store Transactions (`ms_mem_write`) | 16 (one per output element) |
+| Multiply Iterations | 4 per output element (inner loop k = 0–3) |
+| Warps Actively Computing | 4 (round-robin throughout, not just Warp 0) |
 | Coalescing Ratio | 16:1 per transaction |
-| Speedup vs. Addition | ~5.9× more cycles (expected for O(N) inner loop) |
+| Cycles vs. Addition | ~20× more cycles (reduction loop + 4 warps interleaved) |
 
 ---
 
@@ -499,6 +591,8 @@ The `memory_scheduler` combines accesses from multiple SIMT lanes that fall with
 | Lower latency | One scheduler FSM cycle instead of 16 sequential accesses |
 | Higher throughput | Enables full-warp load/store in constant cycles regardless of lane count |
 
+Note that this benefit is fully realised in the addition and dot-product kernels (single-pass, single coalesced store), but only partially realised in matrix multiplication, where each output element completes its own accumulation loop at a different time — resulting in 16 separate store bursts instead of one.
+
 ---
 
 ## Test Output
@@ -506,13 +600,139 @@ The `memory_scheduler` combines accesses from multiple SIMT lanes that fall with
 ### Matrix Addition
 
 ```
+==================== MATRIX A ====================
+     1    2    3    4 
+     5    6    7    8 
+     9   10   11   12 
+    13   14   15   16 
+==================== MATRIX B ====================
+     1    0    0    0 
+     0    1    0    0 
+     0    0    1    0 
+     0    0    0    1 
+==================== MATRIX C ====================
+  (Expected vs Actual)
+  +-------------+-------------+
+  |  Expected   |   Actual    |
+  +-------------+-------------+
+  +-------------+-------------+
+  |           2 |           2 |
+  |           2 |           2 |
+  |           3 |           3 |
+  |           4 |           4 |
+  |             |             |
+  +-------------+-------------+
+  |           5 |           5 |
+  |           7 |           7 |
+  |           7 |           7 |
+  |           8 |           8 |
+  |             |             |
+  +-------------+-------------+
+  |           9 |           9 |
+  |          10 |          10 |
+  |          12 |          12 |
+  |          12 |          12 |
+  |             |             |
+  +-------------+-------------+
+  |          13 |          13 |
+  |          14 |          14 |
+  |          15 |          15 |
+  |          17 |          17 |
+  +-------------+-------------+
 === Matrix Addition: PASS ===
+../tests/tb_matrix_add.v:114: $finish called at 425000 (1ps)
+```
+
+### Matrix Dot Product
+
+```
+==================== MATRIX A ====================
+     1    2    3    4 
+     5    6    7    8 
+     9   10   11   12 
+    13   14   15   16 
+==================== MATRIX B ====================
+     1    0    0    0 
+     0    1    0    0 
+     0    0    1    0 
+     0    0    0    1 
+==================== MATRIX C ====================
+  (Expected vs Actual)
+  +-------------+-------------+
+  |  Expected   |   Actual    |
+  +-------------+-------------+
+  +-------------+-------------+
+  |           1 |           1 |
+  |           0 |           0 |
+  |           0 |           0 |
+  |           0 |           0 |
+  |             |             |
+  +-------------+-------------+
+  |           0 |           0 |
+  |           6 |           6 |
+  |           0 |           0 |
+  |           0 |           0 |
+  |             |             |
+  +-------------+-------------+
+  |           0 |           0 |
+  |           0 |           0 |
+  |          11 |          11 |
+  |           0 |           0 |
+  |             |             |
+  +-------------+-------------+
+  |           0 |           0 |
+  |           0 |           0 |
+  |           0 |           0 |
+  |          16 |          16 |
+  +-------------+-------------+
+=== Matrix Dot Product: PASS ===
+../tests/tb_matrix_dot.v:114: $finish called at 425000 (1ps)
 ```
 
 ### Matrix Multiplication
 
 ```
+==================== MATRIX A ====================
+     1    2    3    4 
+     5    6    7    8 
+     9   10   11   12 
+    13   14   15   16 
+==================== MATRIX B ====================
+     1    0    0    0 
+     0    1    0    0 
+     0    0    1    0 
+     0    0    0    1 
+==================== MATRIX C ====================
+  (Expected vs Actual)
+  +-------------+-------------+
+  |  Expected   |   Actual    |
+  +-------------+-------------+
+  +-------------+-------------+
+  |           1 |           1 |
+  |           2 |           2 |
+  |           3 |           3 |
+  |           4 |           4 |
+  |             |             |
+  +-------------+-------------+
+  |           5 |           5 |
+  |           6 |           6 |
+  |           7 |           7 |
+  |           8 |           8 |
+  |             |             |
+  +-------------+-------------+
+  |           9 |           9 |
+  |          10 |          10 |
+  |          11 |          11 |
+  |          12 |          12 |
+  |             |             |
+  +-------------+-------------+
+  |          13 |          13 |
+  |          14 |          14 |
+  |          15 |          15 |
+  |          16 |          16 |
+  +-------------+-------------+
 === Matrix Multiplication: PASS ===
+../tests/tb_matrix_mul.v:105: $finish called at 8435000 (1ps)
 ```
 
 ---
@@ -542,6 +762,7 @@ The `memory_scheduler` combines accesses from multiple SIMT lanes that fall with
 ```bash
 gtkwave waves/tb_matrix_add.vcd
 gtkwave waves/tb_matrix_mul.vcd
+gtkwave waves/tb_matrix_dot.vcd
 ```
 
 Suggested signals to add in GTKWave:
@@ -561,22 +782,24 @@ done
 
 ## Performance Analysis
 
-### Matrix Addition vs. Multiplication
+### Matrix Addition vs. Dot Product vs. Multiplication
 
-| Metric | Addition | Multiplication |
-|--------|:---:|:---:|
-| Clock cycles | 42 | 247 |
-| Runtime | 425 ns | 2475 ns |
-| Memory ops | 3 | ~24+ |
-| ALU ops per element | 1 ADD | 4 MUL + 4 ADD |
-| Inner loop iterations | — | 4 (per element) |
-| Parallelism | 16 lanes / op | 16 lanes / op |
+| Metric | Addition | Dot Product | Multiplication |
+|--------|:---:|:---:|:---:|
+| Clock cycles | 42 | 42 | 843 |
+| Runtime | 425 ns | 425 ns | 8435 ns |
+| Memory requests (`mem_req_pulse`) | 3 | 3 | 98 |
+| Store transactions (`ms_mem_write`) | 1 | 1 | 16 |
+| ALU op | 1 ADD | 1 MUL | 4 MUL + 4 ADD (per element) |
+| Inner loop iterations | — | — | 4 (per element) |
+| Warps doing real work | 1 (W0) | 1 (W0) | 4 (round-robin) |
+| Parallelism | 16 lanes / op | 16 lanes / op | 16 lanes / op |
 
-Despite the inner loop, all 16 output elements still compute **in parallel** within each loop iteration. The higher cycle count for multiplication reflects the sequential loop body, not a reduction in parallelism.
+Despite the inner loop, all 16 output elements still compute **in parallel** within each loop iteration. The much higher cycle count for multiplication reflects the sequential accumulation loop and the fact that all four warps are kept busy for the whole run — not a reduction in per-cycle parallelism.
 
 ### Coalescing Efficiency
 
-Both kernels achieve **16:1 coalescing** on every load and store because the lanes access a contiguous 16-element block, which fits exactly in one 16-word cache line. No second REQ pass is needed per memory operation.
+Addition and dot-product achieve **16:1 coalescing** on every load and store (3 transactions total each) because all 16 lanes access a contiguous 16-element block that fits exactly in one 16-word cache line. Matrix multiplication also coalesces each individual load/store to 16:1, but because its 16 output elements finish their accumulation loops at different times, the final write-back is split into **16 separate coalesced store transactions** instead of one combined burst.
 
 ---
 
