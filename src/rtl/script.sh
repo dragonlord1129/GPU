@@ -42,7 +42,8 @@ esac
 echo "Output    : $OUT"
 echo "Testbench : $TB"
 
-iverilog -g2005-sv \
+iverilog  \
+    -g2005-sv \
     -o "$OUT" \
     alu* \
     data_memory.v \
@@ -54,7 +55,6 @@ iverilog -g2005-sv \
     reg_file_simt.v \
     simt_alu.v \
     warp_scheduler.v \
-    writeback_mux.v \
     "$TB"
 
 echo "Build successful."

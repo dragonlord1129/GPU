@@ -19,7 +19,7 @@ module reg_file_simt #(
     input  wire [3:0]                  wb2_rd_addr,
     input  wire [1:0]                  wb2_warp_id,
     input  wire [LANES-1:0]            wb2_active_mask,
-    input  wire [DATA_WIDTH-1:0]       wb2_write_data [0:LANES-1],
+    input  wire [LANES*DATA_WIDTH-1:0]       wb2_write_data,
     input  wire                        wb2_reg_write,
 
     output wire [DATA_WIDTH-1:0]       rs1_data [0:LANES-1],
@@ -59,7 +59,7 @@ module reg_file_simt #(
             if (wb2_reg_write) begin
                 for (l = 0; l < LANES; l = l + 1) begin
                     if (wb2_active_mask[l] && (wb2_rd_addr != 0) && (wb2_rd_addr != 15))
-                        REGS[wb2_warp_id][l][wb2_rd_addr] <= wb2_write_data[l];
+                        REGS[wb2_warp_id][l][wb2_rd_addr] <= wb2_write_data[l*DATA_WIDTH +: DATA_WIDTH];
                 end
             end
         end

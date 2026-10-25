@@ -96,7 +96,7 @@ module gpu_top (
         .wb2_rd_addr     (captured_lw_dest),
         .wb2_warp_id     (captured_lw_warp_id),
         .wb2_active_mask (warp_mask_reg[captured_lw_warp_id]),
-        .wb2_write_data  (captured_lw_data),
+        .wb2_write_data  (captured_lw_data_flat),
         .wb2_reg_write   (load_write_pulse),
 
         .rs1_data(rs1_data), .rs2_data(rs2_data)
@@ -196,7 +196,15 @@ module gpu_top (
     reg [3:0]  captured_lw_dest;
     reg [1:0]  captured_lw_warp_id;
     reg        load_write_pulse;
+    wire [16*16-1:0] captured_lw_data_flat;
 
+    genvar k;
+    generate
+        for (k = 0; k < 16; k = k + 1) begin : gen_capture_flat
+            assign captured_lw_data_flat[k*16 +: 16] =
+                captured_lw_data[k];
+        end
+    endgenerate
     always @(posedge clk) begin
         if (rst) begin
             load_write_pulse <= 1'b0;
